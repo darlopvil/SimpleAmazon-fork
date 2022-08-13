@@ -71,7 +71,9 @@ func search(tld string, searchTerm string) SearchResults {
     pagesStr := doc.Find("span.s-pagination-strip > span.s-pagination-item.s-pagination-disabled").Last().Text()
     pages, err := strconv.Atoi(pagesStr)
     if err != nil {
-        log.Fatalf("Couldn't fetch number of pages from %s: %s", pagesStr, err)
+        //NOTE this also happens when there is only one page
+        fmt.Println("Couldn't fetch number of pages from %s: %s", pagesStr, err)
+        pages = 1
     }
     resultsElement.Pages = pages
 
@@ -117,16 +119,37 @@ func search(tld string, searchTerm string) SearchResults {
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
-    if r.Method != "POST" {
-        fmt.Fprintf(w, "Sorry, only POST is supported at this point")
+    tld := "com"
+    query := "default query, should never be shown."
+
+    if r.Method == "GET" {
+        // get url parameters
+
+        tld = r.URL.Query()["tld"][0]
+        query = r.URL.Query()["query"][0]
+
+    } else if r.Method == "POST" {
+        //TODO redirect to GET page
+        if err := r.ParseForm(); err != nil {
+            fmt.Fprintf(w, "Parseform() err %s", err)
+            return
+        }
+
+        // build the url
+        searchURL, _ := url.Parse("/search")
+
+        parameters := url.Values{}
+        parameters.Add("tld", r.FormValue("tld"))
+        parameters.Add("query", r.FormValue("query"))
+        searchURL.RawQuery = parameters.Encode()
+
+        http.Redirect(w, r, searchURL.String(), http.StatusSeeOther)
+    } else {
+        fmt.Fprintf(w, "Sorry, only POST or GET is supported.")
         return
     }
-    
-    if err := r.ParseForm(); err != nil {
-        fmt.Fprintf(w, "Parseform() err %s", err)
-    }
 
-    result := search(r.FormValue("tld"), r.FormValue("query"))
+    result := search(tld, query)
 
     t, err := template.ParseFiles("templates/searchResults.html")
     if err != nil {
