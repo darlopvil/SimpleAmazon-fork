@@ -18,6 +18,8 @@ var (
     indexTemplate string
     //go:embed templates/searchResults.html
     searchResultsTemplate string
+    //go:embed templates/unhandled.html
+    unhandledTemplate string
 )
 
 type SearchResult struct {
@@ -238,6 +240,11 @@ func main() {
 
     fmt.Println("Serving on :8080")
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        if len(r.URL.Path) > 1 {
+            fmt.Fprintf(w, unhandledTemplate)
+            return
+        }
+
         fmt.Fprintf(w, indexTemplate)
     })
     http.HandleFunc("/s", handleSearch)
