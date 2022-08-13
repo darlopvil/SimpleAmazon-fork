@@ -86,12 +86,12 @@ button:focus {
 </style>
     <body>
         <center>
-            <h2>SimpleAmazon</h2>
-            <h5>A simple frontend for Amazon Search</h5>
+            <h2>SimpleAmazon (BETA)</h2>
+            <h5>A simple frontend for searching amazon.com</h5>
 
             <form action="/s" method="POST">
-                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="{{ .TLD }}"/>
                 <input size="45" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search" value="{{ .Query }}"/>
+                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="{{ .TLD }}"/>
                 <button type="submit">Search</button>
             </form>
 
@@ -143,6 +143,10 @@ button:focus {
                     <a href="/s?tld={{ .TLD }}&k={{ .Query }}&page={{ add .Page 1}}">Next</a>
                 {{ end }}
             {{ end }}
+
         </center>
+
+        <br>
+        <a href="https://simple-web.org/projects/simpleamazon">Project Page</a> | <a href="https://codeberg.org/SimpleWeb/SimpleAmazon">Source Code</a>
     </body>
 </html>

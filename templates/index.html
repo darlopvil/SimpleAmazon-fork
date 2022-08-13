@@ -86,14 +86,20 @@ button:focus {
 
     <body>
         <center>
-            <h2>SimpleAmazon</h2>
-            <h5>A simple frontend for Amazon Search</h5>
+            <h2>SimpleAmazon (BETA)</h2>
+            <h5>A simple frontend for searching amazon.com</h5>
 
             <form action="/s" method="POST">
-                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="com"/>
                 <input size="45" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search"/>
+                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="com"/>
                 <button type="submit">Search</button>
             </form>
+
+            <p>This is a frontend for searching amazon that allows you to search for your amazon articles without the requirement for JavaScript and without being traced by amazon itself.</p>
+            <p>All images on this site are proxied so you don't have to ping amazon yourself, but the results all redirect to amazon itself because product pages aren't implement yet.</p>
         </center>
+
+        <br>
+        <a href="https://simple-web.org/projects/simpleamazon">Project Page</a> | <a href="https://codeberg.org/SimpleWeb/SimpleAmazon">Source Code</a>
     </body>
 </html>
