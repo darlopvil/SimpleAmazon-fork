@@ -101,14 +101,16 @@ button:focus {
                     <td><img src="{{ .ImageURL }}"></td>
                     <td>
                         <h3><a href="{{ .AmazonURL }}">{{ .Title }}</a></h3>
-                        <p>Price: {{ .Price }}</p>
+                        {{ if .Type }}
+                            <p>Typ: {{ .Type }}</p>
+                        {{ end }}
+
+                        {{ if .Price }}
+                        <p>Price: <b>{{ .Price }}</b></p>
+                        {{ else }}
+                        <p>Not available or only available through subscription</p>
+                        {{ end }}
                     </td>
-                    <!--
-                    <h2><a href="{{ .URL }}">{{ .Title }}</a></h2>
-                    <p>Price {{ .Price }}</p>
-                    <img src="{{ .ImageURL }}" width="300">
-                    <hr>
-                    -->
                 </tr>
             {{ end }}
             </table>
