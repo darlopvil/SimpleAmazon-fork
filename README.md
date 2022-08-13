@@ -5,7 +5,6 @@ A frontend for Amazon that allows users to browse and search amazon on any TLD o
 ## How to install/run
 
 ```bash
-git clone https://codeberg.org/SimpleWeb/SimpleAmazon
-cd SimpleAmazon
-go run main.go
+go install codeberg.org/SimpleWeb/SimpleAmazon@latest
+SimpleAmazon
 ```

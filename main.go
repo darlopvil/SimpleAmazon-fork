@@ -8,8 +8,16 @@ import ( "fmt"
     "html/template"
     "math"
     "io"
+    _ "embed"
     
     "github.com/PuerkitoBio/goquery"
+)
+
+var (
+    //go:embed templates/index.html
+    indexTemplate string
+    //go:embed templates/searchResults.html
+    searchResultsTemplate string
 )
 
 type SearchResult struct {
@@ -28,7 +36,6 @@ type SearchResults struct {
     Results []SearchResult
 
 }
-
 
 func search(tld string, searchTerm string, page int) SearchResults {
     var resultsElement SearchResults
@@ -203,7 +210,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         },
     }
 
-    t, err := template.New("searchResults.html").Funcs(fm).ParseFiles("templates/searchResults.html")
+    t, err := template.New("searchResults.html").Funcs(fm).Parse(searchResultsTemplate)
     if err != nil {
         fmt.Println(err)
     }
@@ -228,9 +235,10 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+
     fmt.Println("Serving on :8080")
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        http.ServeFile(w, r, "templates/index.html")
+        fmt.Fprintf(w, indexTemplate)
     })
     http.HandleFunc("/s", handleSearch)
     http.HandleFunc("/mediaproxy/", proxyMedia)
