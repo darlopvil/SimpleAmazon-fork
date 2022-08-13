@@ -6,6 +6,7 @@ import ( "fmt"
     "net/url"
     "net/http"
     "html/template"
+    "math"
     
     "github.com/PuerkitoBio/goquery"
 )
@@ -13,7 +14,6 @@ import ( "fmt"
 type SearchResult struct {
     Title string
     URL string
-    AmazonURL string
     Price string
     ImageURL string
     Type string
@@ -21,16 +21,19 @@ type SearchResult struct {
 
 type SearchResults struct {
     Pages int
+    Page int
     TLD string
     Query string
     Results []SearchResult
+
 }
 
 
-func search(tld string, searchTerm string) SearchResults {
+func search(tld string, searchTerm string, page int) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
     resultsElement.TLD = tld
+    resultsElement.Page = page
 
     // build the url
     requestURL, err := url.Parse("https://amazon." + tld + "/s")
@@ -40,6 +43,7 @@ func search(tld string, searchTerm string) SearchResults {
 
     parameters := url.Values{}
     parameters.Add("k", searchTerm)
+    parameters.Add("page", strconv.Itoa(page))
     requestURL.RawQuery = parameters.Encode()
 
 
@@ -69,14 +73,15 @@ func search(tld string, searchTerm string) SearchResults {
     }
 
     //find out how many pages of search results there are
-    pagesStr := doc.Find("span.s-pagination-strip > span.s-pagination-item.s-pagination-disabled").Last().Text()
-    pages, err := strconv.Atoi(pagesStr)
-    if err != nil {
-        //NOTE this also happens when there is only one page
-        fmt.Println("Couldn't fetch number of pages from %s: %s", pagesStr, err)
-        pages = 1
-    }
-    resultsElement.Pages = pages
+    //sadly amazon's pagination is inconsistent, so we need to do this to get a consistent result
+    largestPage := 1
+    doc.Find("span.s-pagination-strip").ChildrenFiltered(".s-pagination-item").Each(func(i int, child *goquery.Selection) {
+        page, _ := strconv.Atoi(child.Text())
+        if page > largestPage {
+            largestPage = page
+        }
+    })
+    resultsElement.Pages = largestPage
 
     // find the search results
     var searchResults []SearchResult
@@ -108,7 +113,6 @@ func search(tld string, searchTerm string) SearchResults {
 
             res.Title = title
             res.URL = link
-            res.AmazonURL = "https://amazon." + tld + link
             res.Price = price
             res.ImageURL = image
             res.Type = type_
@@ -125,26 +129,50 @@ func search(tld string, searchTerm string) SearchResults {
 func handleSearch(w http.ResponseWriter, r *http.Request) {
     tld := "com"
     query := "default query, should never be shown."
+    page := 1
 
     if r.Method == "GET" {
         // get url parameters
 
-        tld = r.URL.Query()["tld"][0]
-        query = r.URL.Query()["query"][0]
+        tldInQuery := r.URL.Query()["tld"]
+        if len(tldInQuery) > 0 {
+            tld = tldInQuery[0]
+        }
+
+        queryInQuery := r.URL.Query()["k"]
+        if len(queryInQuery) > 0 {
+            query = queryInQuery[0]
+        }
+
+
+        pageInQuery := r.URL.Query()["page"]
+        if len(pageInQuery) > 0 {
+            convPage, err := strconv.Atoi(pageInQuery[0])
+
+            if err != nil {
+                // we couldn't parse the page argument, so use the default page
+                page = 1
+            } else {
+                page = convPage
+            }
+        }
 
     } else if r.Method == "POST" {
-        //TODO redirect to GET page
         if err := r.ParseForm(); err != nil {
             fmt.Fprintf(w, "Parseform() err %s", err)
             return
         }
 
         // build the url
-        searchURL, _ := url.Parse("/search")
+        searchURL, _ := url.Parse("/s")
+
+        pageFromValue, _ := strconv.Atoi(r.FormValue("page"))
+        page := int(math.Max(float64(pageFromValue), 1))
 
         parameters := url.Values{}
         parameters.Add("tld", r.FormValue("tld"))
-        parameters.Add("query", r.FormValue("query"))
+        parameters.Add("k", r.FormValue("k"))
+        parameters.Add("page", strconv.Itoa(page))
         searchURL.RawQuery = parameters.Encode()
 
         http.Redirect(w, r, searchURL.String(), http.StatusSeeOther)
@@ -153,9 +181,23 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    result := search(tld, query)
 
-    t, err := template.ParseFiles("templates/searchResults.html")
+
+    // get the result
+
+    result := search(tld, query, page)
+
+    // expose simple add / subtract functions to the template
+    fm := template.FuncMap{
+        "substract": func(a, b int) int {
+            return a - b
+        },
+        "add": func(a, b int) int {
+            return a + b
+        },
+    }
+
+    t, err := template.New("searchResults.html").Funcs(fm).ParseFiles("templates/searchResults.html")
     if err != nil {
         fmt.Println(err)
     }
@@ -171,7 +213,7 @@ func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         http.ServeFile(w, r, "templates/index.html")
     })
-    http.HandleFunc("/search", handleSearch)
+    http.HandleFunc("/s", handleSearch)
 
     fmt.Println(http.ListenAndServe(":8080", nil))
 }
