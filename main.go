@@ -7,6 +7,7 @@ import ( "fmt"
     "net/http"
     "html/template"
     "math"
+    "io"
     
     "github.com/PuerkitoBio/goquery"
 )
@@ -94,6 +95,11 @@ func search(tld string, searchTerm string, page int) SearchResults {
         price := result.Find("span.a-price > span.a-offscreen").First().Text()
         image, _ := result.Find("img.s-image").First().Attr("src")
         type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
+
+        // length of https://m.media-amazon.com : 26
+        if len(image) > 26 {
+            image = "/mediaproxy" + image[26:]
+        }
 
         /*
         price := result.Find("span.a-price-whole").Text()
@@ -208,12 +214,26 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
     }
 }
 
+func proxyMedia(w http.ResponseWriter, r *http.Request) {
+    // len of /mediaproxy: 12
+    url := r.URL.Path[12:]
+
+    resp, err := http.Get("https://m.media-amazon.com/" + url)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusServiceUnavailable)
+        return
+    }
+    defer resp.Body.Close()
+    io.Copy(w, resp.Body)
+}
+
 func main() {
     fmt.Println("Serving on :8080")
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         http.ServeFile(w, r, "templates/index.html")
     })
     http.HandleFunc("/s", handleSearch)
+    http.HandleFunc("/mediaproxy/", proxyMedia)
 
     fmt.Println(http.ListenAndServe(":8080", nil))
 }
