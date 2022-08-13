@@ -8,6 +8,7 @@ import ( "fmt"
     "html/template"
     "math"
     "io"
+    "flag"
     _ "embed"
     
     "github.com/PuerkitoBio/goquery"
@@ -237,8 +238,11 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+    port := flag.Int("p", 8080, "Port")
+    host := flag.String("h", "localhost", "Host")
+    flag.Parse()
 
-    fmt.Println("Serving on :8080")
+    fmt.Printf("Serving on %s:%d\n", *host, *port)
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         if len(r.URL.Path) > 1 {
             fmt.Fprintf(w, unhandledTemplate)
@@ -250,5 +254,5 @@ func main() {
     http.HandleFunc("/s", handleSearch)
     http.HandleFunc("/mediaproxy/", proxyMedia)
 
-    fmt.Println(http.ListenAndServe(":8080", nil))
+    fmt.Println(http.ListenAndServe(*host + ":" + strconv.Itoa(*port), nil))
 }
