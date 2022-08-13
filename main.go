@@ -16,6 +16,7 @@ type SearchResult struct {
     AmazonURL string
     Price string
     ImageURL string
+    Type string
 }
 
 type SearchResults struct {
@@ -87,6 +88,8 @@ func search(tld string, searchTerm string) SearchResults {
 
         price := result.Find("span.a-price > span.a-offscreen").First().Text()
         image, _ := result.Find("img.s-image").First().Attr("src")
+        type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
+
         /*
         price := result.Find("span.a-price-whole").Text()
         priceFraction := result.Find("span.a-price-fraction").Text()
@@ -108,6 +111,7 @@ func search(tld string, searchTerm string) SearchResults {
             res.AmazonURL = "https://amazon." + tld + link
             res.Price = price
             res.ImageURL = image
+            res.Type = type_
 
             searchResults = append(searchResults, res)
         }
