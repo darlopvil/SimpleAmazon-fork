@@ -1,6 +1,5 @@
 package main
 import ( "fmt"
-    "log"
     "strings"
     "strconv"
     "net/url"
@@ -41,6 +40,7 @@ type SearchResults struct {
     Sort string
     Query string
     Results []SearchResult
+    Error string
 }
 
 /*
@@ -61,7 +61,8 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
     // build the url
     requestURL, err := url.Parse("https://amazon." + tld + "/s")
     if err != nil {
-        panic(err)
+        resultsElement.Error = fmt.Sprintf("Invalid URL https://amazon.%s/s", tld)
+        return resultsElement
     }
 
     parameters := url.Values{}
@@ -75,25 +76,29 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
     client := &http.Client{}
     req, err := http.NewRequest("GET", requestURL.String(), nil)
     if err != nil {
-        log.Fatalf("Error creating request %s", err)
+        resultsElement.Error = fmt.Sprintf("Error creating request %s", err)
+        return resultsElement
     }
 
     req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
 
     res, err := client.Do(req)
     if err != nil {
-        log.Fatalf("Couldn't fetch search results: %s", err)
+        resultsElement.Error = fmt.Sprintf("Couldn't fetch search result: %s", err)
+        return resultsElement
     }
     defer res.Body.Close()
 
     if res.StatusCode != 200 {
-        log.Fatalf("Status code error: %d %s", res.StatusCode, res.Status)
+        resultsElement.Error = fmt.Sprintf("Status code error: %d %s", res.StatusCode, res.Status)
+        return resultsElement
     }
 
     // Load the HTML document
     doc, err := goquery.NewDocumentFromReader(res.Body)
     if err != nil {
-        log.Fatalf("Couldn't parse HTML result %s", err)
+        resultsElement.Error = fmt.Sprintf("Couldn't parse HTML result: %s", err)
+        return resultsElement
     }
 
     //find out how many pages of search results there are
@@ -219,6 +224,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
     // get the result
 
     result := search(tld, query, page, sort)
+
+    if result.Error != "" {
+        fmt.Fprintf(w, result.Error)
+        return
+    }
 
     // expose simple add / subtract functions to the template
     fm := template.FuncMap{
