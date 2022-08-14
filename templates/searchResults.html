@@ -157,13 +157,13 @@ select:focus {
             {{ if (gt .Pages 1)}}
                 <br>
                 {{ if (gt .Page 1)}}
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&page={{ substract .Page 1}}">Previous</a>
+                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ substract .Page 1}}">Previous</a>
                     <b> | </b>
                 {{ end }}
                 Page {{ .Page }} of {{ .Pages }}
                 {{ if (lt .Page .Pages)}}
                     <b> | </b>
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&page={{ add .Page 1}}">Next</a>
+                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ add .Page 1}}">Next</a>
                 {{ end }}
                 <hr>
             {{ end }}
@@ -204,13 +204,13 @@ select:focus {
             {{ if (gt .Pages 1)}}
                 <hr>
                 {{ if (gt .Page 1)}}
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&page={{ substract .Page 1}}&s={{ .Sort }}">Previous</a>
+                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ substract .Page 1}}">Previous</a>
                     <b> | </b>
                 {{ end }}
                 Page {{ .Page }} of {{ .Pages }}
                 {{ if (lt .Page .Pages)}}
                     <b> | </b>
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&page={{ add .Page 1}}&s={{ .Sort }}">Next</a>
+                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ add .Page 1}}">Next</a>
                 {{ end }}
             {{ end }}
 
