@@ -40,14 +40,6 @@ type SearchResults struct {
     Results []SearchResult
 }
 
-/*
-0: Featured: None
-1: Price: Low to High: price-asc-rank
-2: Price: High to Low: price-desc-rank
-3: Avg. Customer Review: review-rank
-4: Newest Arrivals: date-desc-rank
-*/
-
 func search(tld string, searchTerm string, page int, sort string) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
