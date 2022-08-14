@@ -31,6 +31,7 @@ type SearchResult struct {
     Type string
     Ratings string
     Reviews int
+    LimitedSupply string
 }
 
 type SearchResults struct {
@@ -127,6 +128,9 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
         reviews, _ := strconv.Atoi(reviewsAndRatingsEl.Find("span").Last().Text())
         ratings := reviewsAndRatingsEl.Find("span").First().Find("span").Last().Text()
 
+        limitedSupplyEl := result.Find("div.sg-col-inner > div.a-section.a-spacing-none.a-spacing-top-micro > div").Last()
+        limitedSupply := limitedSupplyEl.Find("span.a-size-base.a-color-price").Text()
+
 
         if strings.Trim(title, " ") != "" {
             var res SearchResult
@@ -138,6 +142,7 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
             res.Type = type_
             res.Reviews = reviews
             res.Ratings = ratings
+            res.LimitedSupply = limitedSupply
 
             searchResults = append(searchResults, res)
         }

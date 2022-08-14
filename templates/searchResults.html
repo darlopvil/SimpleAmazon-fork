@@ -57,6 +57,10 @@ a {
     font-weight: bold;
 }
 
+.limitedSupply {
+    color: red;
+}
+
 table {
     border-collapse: collapse;
 }
@@ -183,9 +187,14 @@ select:focus {
                         {{ end }}
 
                         {{ if .Price }}
-                        <span class="price">{{ .Price }}</span>
+                            <span class="price">{{ .Price }}</span>
                         {{ else }}
-                        <span>Not available or only available through subscription</span>
+                            <span>Not available or only available through subscription</span>
+                        {{ end }}
+
+                        {{ if .LimitedSupply }}
+                            <br>
+                            <span class="limitedSupply">{{ .LimitedSupply }}</span>
                         {{ end }}
                     </td>
                 </tr>
