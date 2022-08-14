@@ -52,6 +52,11 @@ a {
     font-weight: bold;
 }
 
+.price {
+    font-size: 1.3rem;
+    font-weight: bold;
+}
+
 input:focus,
 button:focus,
 select:focus {
@@ -169,7 +174,7 @@ select:focus {
                         {{ end }}
 
                         {{ if .Price }}
-                        <span>Price: <b>{{ .Price }}</b></span>
+                        <span class="price">{{ .Price }}</span>
                         {{ else }}
                         <span>Not available or only available through subscription</span>
                         {{ end }}
