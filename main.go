@@ -29,6 +29,8 @@ type SearchResult struct {
     Price string
     ImageURL string
     Type string
+    Ratings string
+    Reviews int
 }
 
 type SearchResults struct {
@@ -113,35 +115,29 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
         link, _ := titleEl.Find("a").First().Attr("href")
 
         price := result.Find("span.a-price > span.a-offscreen").First().Text()
-        image, _ := result.Find("img.s-image").First().Attr("src")
         type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
 
+        image, _ := result.Find("img.s-image").First().Attr("src")
         // length of https://m.media-amazon.com : 26
         if len(image) > 26 {
             image = "/mediaproxy" + image[26:]
         }
 
-        /*
-        price := result.Find("span.a-price-whole").Text()
-        priceFraction := result.Find("span.a-price-fraction").Text()
-        currencySymbol := result.Find("span.a-price-symbol").Text()
-        */
+        reviewsAndRatingsEl := result.Find("div.a-row.a-size-small").First()
+        reviews, _ := strconv.Atoi(reviewsAndRatingsEl.Find("span").Last().Text())
+        ratings := reviewsAndRatingsEl.Find("span").First().Find("span").Last().Text()
+
 
         if strings.Trim(title, " ") != "" {
             var res SearchResult
-
-            /*
-            fmt.Println(title)
-            fmt.Println("Link:", link)
-            fmt.Println("Image:", image)
-            fmt.Println("Price:", price)
-            */
 
             res.Title = title
             res.URL = link
             res.Price = price
             res.ImageURL = image
             res.Type = type_
+            res.Reviews = reviews
+            res.Ratings = ratings
 
             searchResults = append(searchResults, res)
         }

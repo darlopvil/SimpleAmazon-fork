@@ -158,6 +158,11 @@ select:focus {
                         <span class="article-title"><a href="https://amazon.{{$tld}}{{.URL}}">{{ .Title }}</a></span>
                         <br>
 
+                        {{ if .Ratings }}
+                            <span>{{ .Ratings }} | {{ .Reviews }} Review(s)</span>
+                            <br>
+                        {{ end }}
+
                         {{ if .Type }}
                             <span>Typ: {{ .Type }}</span>
                             <br>
