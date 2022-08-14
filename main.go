@@ -35,16 +35,25 @@ type SearchResults struct {
     Pages int
     Page int
     TLD string
+    Sort string
     Query string
     Results []SearchResult
-
 }
 
-func search(tld string, searchTerm string, page int) SearchResults {
+/*
+0: Featured: None
+1: Price: Low to High: price-asc-rank
+2: Price: High to Low: price-desc-rank
+3: Avg. Customer Review: review-rank
+4: Newest Arrivals: date-desc-rank
+*/
+
+func search(tld string, searchTerm string, page int, sort string) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
     resultsElement.TLD = tld
     resultsElement.Page = page
+    resultsElement.Sort = sort
 
     // build the url
     requestURL, err := url.Parse("https://amazon." + tld + "/s")
@@ -55,6 +64,7 @@ func search(tld string, searchTerm string, page int) SearchResults {
     parameters := url.Values{}
     parameters.Add("k", searchTerm)
     parameters.Add("page", strconv.Itoa(page))
+    parameters.Add("s", sort)
     requestURL.RawQuery = parameters.Encode()
 
 
@@ -146,6 +156,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
     tld := "com"
     query := "default query, should never be shown."
     page := 1
+    sort := ""
 
     if r.Method == "GET" {
         // get url parameters
@@ -160,6 +171,10 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
             query = queryInQuery[0]
         }
 
+        sortInQuery := r.URL.Query()["s"]
+        if len(sortInQuery) > 0 {
+            sort = sortInQuery[0]
+        }
 
         pageInQuery := r.URL.Query()["page"]
         if len(pageInQuery) > 0 {
@@ -188,6 +203,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         parameters := url.Values{}
         parameters.Add("tld", r.FormValue("tld"))
         parameters.Add("k", r.FormValue("k"))
+        parameters.Add("s", r.FormValue("s"))
         parameters.Add("page", strconv.Itoa(page))
         searchURL.RawQuery = parameters.Encode()
 
@@ -201,7 +217,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
     // get the result
 
-    result := search(tld, query, page)
+    result := search(tld, query, page, sort)
 
     // expose simple add / subtract functions to the template
     fm := template.FuncMap{

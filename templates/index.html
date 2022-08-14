@@ -30,7 +30,8 @@ button {
     border: 2px solid #888888;
 }
 
-input {
+input,
+select {
     font-size: 1rem;
     padding: 4px;
     border: 2px solid #888888;
@@ -46,7 +47,8 @@ a {
 }
 
 input:focus,
-button:focus {
+button:focus,
+select:focus {
     outline: 2px solid #5d94ff;
 }
 
@@ -69,7 +71,8 @@ button:focus {
     }
 
     button,
-    input {
+    input,
+    select {
         background-color: #131618;
         border-color: #495057;
         color: #f8f9fa;
@@ -90,7 +93,15 @@ button:focus {
             <h5>A simple frontend for searching amazon.com</h5>
 
             <form action="/s" method="POST">
-                <input size="45" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search"/>
+                <select name="s" id="s">
+                    <option value="">Featured</option>
+                    <option value="price-asc-rank">Price: Low to High</option>
+                    <option value="price-desc-rank">Price: High to Low</option>
+                    <option value="review-rank">Avg. Customer Review</option>
+                    <option value="date-desc-rank">Newest Arrivals</option>
+                </select>
+
+                <input size="35" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search"/>
                 <input size="5" type="text" name="tld" id="tld" placeholder="com" value="com"/>
                 <button type="submit">Search</button>
             </form>

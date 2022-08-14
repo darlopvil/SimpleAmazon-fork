@@ -31,7 +31,8 @@ button {
     border: 2px solid #888888;
 }
 
-input {
+input,
+select {
     font-size: 1rem;
     padding: 4px;
     border: 2px solid #888888;
@@ -47,7 +48,8 @@ a {
 }
 
 input:focus,
-button:focus {
+button:focus,
+select:focus {
     outline: 2px solid #5d94ff;
 }
 
@@ -70,7 +72,8 @@ button:focus {
     }
 
     button,
-    input {
+    input,
+    select {
         background-color: #131618;
         border-color: #495057;
         color: #f8f9fa;
@@ -90,7 +93,38 @@ button:focus {
             <h5>A simple frontend for searching amazon.com</h5>
 
             <form action="/s" method="POST">
-                <input size="45" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search" value="{{ .Query }}"/>
+                <select name="s" id="s">
+                    {{ if (eq .Sort "") }}
+                        <option value="" selected>Featured</option>
+                    {{ else }}
+                        <option value="">Featured</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "price-asc-rank") }}
+                        <option value="price-asc-rank" selected>Price: Low to High</option>
+                    {{ else }}
+                        <option value="price-asc-rank" selected>Price: Low to High</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "price-desc-rank") }}
+                        <option value="price-desc-rank" selected>Price: High to Low</option>
+                    {{ else }}
+                        <option value="price-desc-rank">Price: High to Low</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "review-rank") }}
+                        <option value="review-rank" selected>Avg. Customer Review</option>
+                    {{ else }}
+                        <option value="review-rank">Avg. Customer Review</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "date-desc-rank") }}
+                        <option value="date-desc-rank" selected>Newest Arrivals</option>
+                    {{ else }}
+                        <option value="date-desc-rank">Newest Arrivals</option>
+                    {{ end }}
+                </select>
+                <input size="35" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search" value="{{ .Query }}"/>
                 <input size="5" type="text" name="tld" id="tld" placeholder="com" value="{{ .TLD }}"/>
                 <button type="submit">Search</button>
             </form>
