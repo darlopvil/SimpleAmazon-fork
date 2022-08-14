@@ -47,6 +47,11 @@ a {
     text-decoration: none;
 }
 
+.article-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
 input:focus,
 button:focus,
 select:focus {
@@ -149,16 +154,19 @@ select:focus {
             {{ range .Results }}
                 <tr>
                     <td><a href="{{ .ImageURL }}"><img src="{{ .ImageURL }}"></a></td>
-                    <td>
-                        <h3><a href="https://amazon.{{$tld}}{{.URL}}">{{ .Title }}</a></h3>
+                    <td valign="top">
+                        <span class="article-title"><a href="https://amazon.{{$tld}}{{.URL}}">{{ .Title }}</a></span>
+                        <br>
+
                         {{ if .Type }}
-                            <p>Typ: {{ .Type }}</p>
+                            <span>Typ: {{ .Type }}</span>
+                            <br>
                         {{ end }}
 
                         {{ if .Price }}
-                        <p>Price: <b>{{ .Price }}</b></p>
+                        <span>Price: <b>{{ .Price }}</b></span>
                         {{ else }}
-                        <p>Not available or only available through subscription</p>
+                        <span>Not available or only available through subscription</span>
                         {{ end }}
                     </td>
                 </tr>
