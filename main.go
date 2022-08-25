@@ -119,6 +119,30 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
         titleEl := result.Find("div.s-title-instructions-style > h2")
         title := titleEl.Text()
         link, _ := titleEl.Find("a").First().Attr("href")
+        // Strip the tracking parts of the URL if possible
+        url, err := url.Parse(link)
+        if err == nil {
+            dontParse := false
+            if strings.HasPrefix(url.Path, "/gp/") {
+                // the URL query parameter contains the actual name of the URL, so we can save ourselves a trip to the amazon redirect domain and just get the URL and then let it run through the parser down below
+                if val, ok := url.Query()["url"]; ok {
+                    url.Path = val[0]
+                } else {
+                    dontParse = true
+                }
+            }
+
+            if !dontParse {
+                url.RawQuery = ""
+
+                pathParts := strings.Split(url.Path, "/")
+                if strings.HasPrefix(pathParts[len(pathParts) - 1], "ref") {
+                    url.Path = strings.Join(pathParts[:len(pathParts) - 1], "/")
+                }
+
+                link = url.String()
+            }
+        }
 
         price := result.Find("span.a-price > span.a-offscreen").First().Text()
         type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
