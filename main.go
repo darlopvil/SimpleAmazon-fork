@@ -8,7 +8,7 @@ import ( "fmt"
     "math"
     "io"
     "flag"
-    _ "embed"
+    "embed"
     
     "github.com/PuerkitoBio/goquery"
 )
@@ -20,6 +20,9 @@ var (
     searchResultsTemplate string
     //go:embed templates/unhandled.html
     unhandledTemplate string
+
+    //go:embed static
+    staticFiles embed.FS
 )
 
 type SearchResult struct {
@@ -302,8 +305,11 @@ func main() {
 
         fmt.Fprintf(w, indexTemplate)
     })
+
     http.HandleFunc("/s", handleSearch)
     http.HandleFunc("/mediaproxy/", proxyMedia)
+
+    http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
 
     fmt.Println(http.ListenAndServe(*host + ":" + strconv.Itoa(*port), nil))
 }
