@@ -16,14 +16,38 @@
 
             <form action="/s" method="POST">
                 <select name="s" id="s">
-                    <option value="">Featured</option>
-                    <option value="price-asc-rank">Price: Low to High</option>
-                    <option value="price-desc-rank">Price: High to Low</option>
-                    <option value="review-rank">Avg. Customer Review</option>
-                    <option value="date-desc-rank">Newest Arrivals</option>
+                    {{ if (eq .Sort "") }}
+                        <option value="" selected>Featured</option>
+                    {{ else }}
+                        <option value="">Featured</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "price-asc-rank") }}
+                        <option value="price-asc-rank" selected>Price: Low to High</option>
+                    {{ else }}
+                        <option value="price-asc-rank">Price: Low to High</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "price-desc-rank") }}
+                        <option value="price-desc-rank" selected>Price: High to Low</option>
+                    {{ else }}
+                        <option value="price-desc-rank">Price: High to Low</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "review-rank") }}
+                        <option value="review-rank" selected>Avg. Customer Review</option>
+                    {{ else }}
+                        <option value="review-rank">Avg. Customer Review</option>
+                    {{ end }}
+
+                    {{ if (eq .Sort "date-desc-rank") }}
+                        <option value="date-desc-rank" selected>Newest Arrivals</option>
+                    {{ else }}
+                        <option value="date-desc-rank">Newest Arrivals</option>
+                    {{ end }}
                 </select>
-                <input size="35" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search"/>
-                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="com"/>
+                <input size="35" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search" value=""/>
+                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="{{ .TLD }}"/>
                 <button type="submit">Search</button>
             </form>
 

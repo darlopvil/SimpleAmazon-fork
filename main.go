@@ -46,6 +46,11 @@ type SearchResults struct {
     Error string
 }
 
+type TemplateValues struct {
+    Sort string
+    TLD string
+}
+
 /*
 0: Featured: None
 1: Price: Low to High: price-asc-rank
@@ -247,6 +252,17 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
     }
 
 
+    // save a cookie containing sorting and TLD (YAY! Session Management)
+    http.SetCookie(w, &http.Cookie{
+        Name: "SortingCookie",
+        Value: sort,
+    })
+
+    http.SetCookie(w, &http.Cookie{
+        Name: "TLDCookie",
+        Value: tld,
+    })
+
 
     // get the result
 
@@ -292,18 +308,45 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+    indexTempl, err := template.New("index").Parse(indexTemplate)
+    if err != nil {
+        panic(err)
+    }
+    unhandledTempl, err := template.New("unhandled").Parse(unhandledTemplate)
+    if err != nil {
+        panic(err)
+    }
+
     port := flag.Int("p", 8080, "Port")
     host := flag.String("h", "localhost", "Host")
     flag.Parse()
 
     fmt.Printf("Serving on %s:%d\n", *host, *port)
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        if len(r.URL.Path) > 1 {
-            fmt.Fprintf(w, unhandledTemplate)
-            return
+        var val TemplateValues
+        // read the cookie
+        sortCookie, err := r.Cookie("SortingCookie")
+        if err == nil {
+            val.Sort = sortCookie.Value
         }
 
-        fmt.Fprintf(w, indexTemplate)
+        tldCookie, err := r.Cookie("TLDCookie")
+        if err == nil {
+            val.TLD = tldCookie.Value
+        } else {
+            val.TLD = "com"
+        }
+
+
+        if len(r.URL.Path) > 1 {
+            err = unhandledTempl.Execute(w, val)
+        } else {
+            err = indexTempl.Execute(w, val)
+        }
+
+        if err != nil {
+            fmt.Fprintf(w, err.Error())
+        }
     })
 
     http.HandleFunc("/s", handleSearch)
