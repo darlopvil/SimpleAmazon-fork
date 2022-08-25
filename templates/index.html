@@ -11,6 +11,8 @@
 
 <style>
 body {
+    background-color: #bce2e5;
+    color: #555;
     max-width: 1200px;
     margin: 10px auto;
     padding-left: 5px;
@@ -37,12 +39,17 @@ select {
     border: 2px solid #888888;
 }
 
-
 a:visited {
+    color: #6f42c1;
     text-decoration: none;
 }
 
+a:hover {
+    text-decoration: underline;
+}
+
 a {
+    color: #3395ff;
     text-decoration: none;
 }
 
@@ -52,22 +59,20 @@ select:focus {
     outline: 2px solid #5d94ff;
 }
 
+center {
+    background-color: #fff;
+    box-shadow: 0px 0px 20px rgba(0,0,0,0.1);
+    padding-bottom: 5px;
+}
+
 @media screen and (prefers-color-scheme: dark) {
     body {
-        background-color: #bce2e5;
-        color: #555;
+        background-color: #212529;
+        color: #ced4da;
     }
 
-    a:visited {
-        color: #9759c6;
-    }
-
-    a:hover {
-        color: #9759c6;
-    }
-
-    a {
-        color: #6c9bd2;
+    center {
+        background-color: #131618;
     }
 
     button,
@@ -76,12 +81,6 @@ select:focus {
         background-color: #131618;
         border-color: #495057;
         color: #f8f9fa;
-    }
-
-    center {
-        background-color: #fff;
-        box-shadow: 0px 0px 20px rgba(0,0,0,0.1);
-        padding-bottom: 5px;
     }
 }
 
