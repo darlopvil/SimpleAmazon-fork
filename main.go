@@ -59,12 +59,30 @@ type TemplateValues struct {
 4: Newest Arrivals: date-desc-rank
 */
 
+// TLDs de los marketplaces que opera Amazon. El valor llega del usuario y se
+// concatena en la URL de destino, asi que se valida contra esta lista cerrada:
+// sin ella, un valor como "com@ejemplo.org" dirige la peticion saliente a un
+// host arbitrario.
+var tldsPermitidos = map[string]bool{
+    "ae": true, "be": true, "ca": true, "cl": true, "cn": true,
+    "co.jp": true, "co.uk": true, "co.za": true, "com": true,
+    "com.au": true, "com.br": true, "com.mx": true, "com.ng": true,
+    "com.tr": true, "de": true, "eg": true, "es": true, "fr": true,
+    "ie": true, "in": true, "it": true, "nl": true, "pl": true,
+    "sa": true, "se": true, "sg": true,
+}
+
 func search(tld string, searchTerm string, page int, sort string) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
     resultsElement.TLD = tld
     resultsElement.Page = page
     resultsElement.Sort = sort
+
+    if !tldsPermitidos[tld] {
+        resultsElement.Error = "TLD no permitido"
+        return resultsElement
+    }
 
     // build the url
     requestURL, err := url.Parse("https://amazon." + tld + "/s")
