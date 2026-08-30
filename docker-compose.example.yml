@@ -1,0 +1,26 @@
+# Ejemplo de despliegue. Copiar a docker-compose.yml y adaptar.
+#
+# El servicio no publica puertos: se asume un proxy inverso que lo alcanza
+# por nombre de contenedor. Si se quiere acceso directo, descomentar "ports".
+
+services:
+  simpleamazon_app:
+    build: .
+    image: simpleamazon:local
+    container_name: simpleamazon_app
+    restart: unless-stopped
+    # El valor por defecto del flag -h es localhost, que dentro de un
+    # contenedor bindea al loopback interno y lo deja inalcanzable.
+    command: ["-h", "0.0.0.0", "-p", "8080"]
+    mem_limit: 128m
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    networks:
+      - simpleamazon_internal
+      # - red_del_proxy_inverso
+
+networks:
+  simpleamazon_internal:
+    internal: true
+  # red_del_proxy_inverso:
+  #   external: true

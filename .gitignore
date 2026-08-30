@@ -21,3 +21,6 @@
 # Go workspace file
 go.work
 
+
+# Despliegue local (contiene datos de infraestructura)
+docker-compose.yml
