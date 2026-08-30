@@ -275,7 +275,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         parameters.Add("page", strconv.Itoa(page))
         searchURL.RawQuery = parameters.Encode()
 
+        // Sin este return la ejecucion continuaba hacia el cuerpo comun de la
+        // funcion, que hacia una busqueda completa contra Amazon con los
+        // valores por defecto y escribia sobre una respuesta ya enviada.
         http.Redirect(w, r, searchURL.String(), http.StatusSeeOther)
+        return
     } else {
         fmt.Fprintf(w, "Sorry, only POST or GET is supported.")
         return
