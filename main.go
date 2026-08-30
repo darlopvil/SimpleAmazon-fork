@@ -124,9 +124,21 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
     var searchResults []SearchResult
 
     doc.Find(".s-result-item").Each(func(i int, result *goquery.Selection) {
-        titleEl := result.Find("div.s-title-instructions-style > h2")
+        // El titulo va en un h2 dentro del contenedor marcado con
+        // data-cy="title-recipe". Se usa el atributo en lugar de la clase
+        // s-title-instructions-style porque las clases utilitarias de Amazon
+        // rotan con mas frecuencia.
+        titleEl := result.Find("[data-cy='title-recipe'] h2").First()
         title := titleEl.Text()
-        link, _ := titleEl.Find("a").First().Attr("href")
+
+        // El enlace es el <a> que envuelve al h2. En una minoria de tarjetas
+        // Amazon sigue sirviendo la estructura antigua, con el <a> dentro del
+        // h2; Closest devuelve vacio en ese caso y se recurre a Find.
+        linkEl := titleEl.Closest("a")
+        if linkEl.Length() == 0 {
+            linkEl = titleEl.Find("a").First()
+        }
+        link, _ := linkEl.Attr("href")
         // Strip the tracking parts of the URL if possible
         url, err := url.Parse(link)
         if err == nil {
