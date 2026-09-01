@@ -320,28 +320,40 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
             linkEl = titleEl.Find("a").First()
         }
         link, _ := linkEl.Attr("href")
-        // Strip the tracking parts of the URL if possible
-        url, err := url.Parse(link)
+        // Se elimina la parte de seguimiento del enlace. La variable se llama
+        // enlace y no url para no ocultar el paquete del mismo nombre.
+        enlace, err := url.Parse(link)
         if err == nil {
             dontParse := false
-            if strings.HasPrefix(url.Path, "/gp/") {
-                // the URL query parameter contains the actual name of the URL, so we can save ourselves a trip to the amazon redirect domain and just get the URL and then let it run through the parser down below
-                if val, ok := url.Query()["url"]; ok {
-                    url.Path = val[0]
+            // Los resultados patrocinados apuntan a un redirector que lleva el
+            // producto real en el parametro url. Amazon usa dos formatos:
+            // /gp/slredirect, el antiguo, y /sspa/click, el actual. Este ultimo
+            // no se contemplaba, de modo que al vaciar el query string se
+            // descartaba con el el producto y el enlace acababa apuntando al
+            // propio redirector.
+            if strings.HasPrefix(enlace.Path, "/gp/") || strings.HasPrefix(enlace.Path, "/sspa/") {
+                if val, ok := enlace.Query()["url"]; ok && val[0] != "" {
+                    // El valor es una ruta con su propio query string, asi que
+                    // se parsea en lugar de asignarse tal cual a Path.
+                    if interno, errInterno := url.Parse(val[0]); errInterno == nil {
+                        enlace = interno
+                    } else {
+                        dontParse = true
+                    }
                 } else {
                     dontParse = true
                 }
             }
 
             if !dontParse {
-                url.RawQuery = ""
+                enlace.RawQuery = ""
 
-                pathParts := strings.Split(url.Path, "/")
-                if strings.HasPrefix(pathParts[len(pathParts) - 1], "ref") {
-                    url.Path = strings.Join(pathParts[:len(pathParts) - 1], "/")
+                pathParts := strings.Split(enlace.Path, "/")
+                if strings.HasPrefix(pathParts[len(pathParts)-1], "ref") {
+                    enlace.Path = strings.Join(pathParts[:len(pathParts)-1], "/")
                 }
 
-                link = url.String()
+                link = enlace.String()
             }
         }
 
