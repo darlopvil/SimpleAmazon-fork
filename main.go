@@ -500,7 +500,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         http.Redirect(w, r, searchURL.String(), http.StatusSeeOther)
         return
     } else {
-        fmt.Fprintf(w, "Sorry, only POST or GET is supported.")
+        w.Header().Set("Allow", "GET, POST")
+        http.Error(w, "Solo se admiten los metodos GET y POST", http.StatusMethodNotAllowed)
         return
     }
 
@@ -612,7 +613,11 @@ func main() {
     flag.Parse()
 
     fmt.Printf("Serving on %s:%d\n", *host, *port)
-    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    // Se usa un multiplexor propio en lugar del global por defecto, para que
+    // las rutas queden acotadas a este servidor.
+    mux := http.NewServeMux()
+
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         var val TemplateValues
         // read the cookie
         sortCookie, err := r.Cookie("SortingCookie")
@@ -628,26 +633,40 @@ func main() {
         }
 
 
-        if len(r.URL.Path) > 1 {
+        if r.URL.Path != "/" {
+            // Antes cualquier ruta desconocida respondia 200, de modo que no
+            // habia forma de distinguir una direccion valida de una que no
+            // existe. La plantilla se conserva como cuerpo de la respuesta.
+            w.WriteHeader(http.StatusNotFound)
             err = unhandledTempl.Execute(w, val)
         } else {
             err = indexTempl.Execute(w, val)
         }
 
         if err != nil {
-            fmt.Fprintf(w, err.Error())
+            // La cabecera ya se envio, asi que escribir el error en el cuerpo
+            // solo produciria una pagina a medias.
+            fmt.Println("error al renderizar la plantilla:", err)
         }
     })
 
-    http.HandleFunc("/s", handleSearch)
-    http.HandleFunc("/mediaproxy/", proxyMedia)
+    // Sin robots.txt, los buscadores pueden indexar la instancia, y cada visita
+    // indexada se traduce en trafico saliente hacia Amazon que no controlamos.
+    mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+        fmt.Fprint(w, "User-agent: *\nDisallow: /\n")
+    })
 
-    http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
+    mux.HandleFunc("/s", handleSearch)
+    mux.HandleFunc("/mediaproxy/", proxyMedia)
+
+    mux.Handle("/static/", http.FileServer(http.FS(staticFiles)))
 
     // ListenAndServe usa un servidor sin ningun timeout, vulnerable a que un
     // cliente lento mantenga conexiones abiertas indefinidamente.
     srv := &http.Server{
         Addr:              *host + ":" + strconv.Itoa(*port),
+        Handler:           mux,
         ReadHeaderTimeout: 5 * time.Second,
         ReadTimeout:       15 * time.Second,
         WriteTimeout:      30 * time.Second,
