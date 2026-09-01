@@ -204,6 +204,33 @@ var tldsPermitidos = map[string]bool{
     "sa": true, "se": true, "sg": true,
 }
 
+// Extrae el numero de resenas de un aria-label del tipo "5.179 calificaciones"
+// o "1,234 ratings". Se recorre solo la parte inicial del texto para no
+// arrastrar cifras que aparezcan mas adelante, y se ignoran los separadores de
+// millares, que varian segun el marketplace.
+func numeroResenas(etiqueta string) (int, bool) {
+    var digitos []rune
+    for _, r := range strings.TrimSpace(etiqueta) {
+        switch {
+        case r >= '0' && r <= '9':
+            digitos = append(digitos, r)
+        case r == '.' || r == ',' || r == '\u00a0' || r == '\u202f':
+            // separador de millares
+        default:
+            if len(digitos) == 0 {
+                return 0, false
+            }
+            n, err := strconv.Atoi(string(digitos))
+            return n, err == nil
+        }
+    }
+    if len(digitos) == 0 {
+        return 0, false
+    }
+    n, err := strconv.Atoi(string(digitos))
+    return n, err == nil
+}
+
 func search(ctx context.Context, tld string, searchTerm string, page int, sort string) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
@@ -366,9 +393,22 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
             image = "/mediaproxy" + image[26:]
         }
 
-        reviewsAndRatingsEl := result.Find("div.a-row.a-size-small").First()
-        reviews, _ := strconv.Atoi(reviewsAndRatingsEl.Find("span").Last().Text())
-        ratings := reviewsAndRatingsEl.Find("span").First().Find("span").Last().Text()
+        // Valoracion y numero de resenas. Se anclan al atributo data-cy en vez
+        // de a la cadena de clases utilitarias, y se leen de donde Amazon los
+        // expone hoy: la puntuacion en el texto alternativo del icono de
+        // estrellas, y el numero exacto en el aria-label del enlace a las
+        // opiniones. El texto visible de ese enlace llega abreviado, del tipo
+        // "(9,2 mil)", y no sirve como fuente.
+        bloqueResenas := result.Find("[data-cy='reviews-block']").First()
+        ratings := strings.TrimSpace(bloqueResenas.Find("span.a-icon-alt").First().Text())
+
+        reviews := 0
+        etiquetaResenas, _ := bloqueResenas.Find("a[href*='customerReviews']").First().Attr("aria-label")
+        if n, ok := numeroResenas(etiquetaResenas); ok {
+            reviews = n
+        } else if etiquetaResenas != "" {
+            fmt.Println("no se pudo leer el numero de resenas de:", etiquetaResenas)
+        }
 
         limitedSupplyEl := result.Find("div.sg-col-inner > div.a-section.a-spacing-none.a-spacing-top-micro > div").Last()
         limitedSupply := limitedSupplyEl.Find("span.a-size-base.a-color-price").Text()
