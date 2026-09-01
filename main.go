@@ -63,6 +63,28 @@ type TemplateValues struct {
 4: Newest Arrivals: date-desc-rank
 */
 
+// User-Agent de una version reciente de Firefox. El valor anterior correspondia
+// a Firefox 47, de 2016, lo que destaca de inmediato ante cualquier heuristica
+// de deteccion. Conviene revisarlo de vez en cuando.
+const userAgent = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+// Idioma que se solicita a cada marketplace, para que los textos de los
+// resultados lleguen en el idioma del dominio elegido y no en el que Amazon
+// deduzca por geolocalizacion. Los precios no se ven afectados por esta
+// cabecera: Amazon los localiza por IP, comprobado enviando es-ES y ja-JP a
+// amazon.com y obteniendo el mismo importe en euros en ambos casos.
+var idiomaPorTLD = map[string]string{
+    "ae": "ar-AE,ar;q=0.9", "be": "fr-BE,fr;q=0.9", "ca": "en-CA,en;q=0.9",
+    "cl": "es-CL,es;q=0.9", "cn": "zh-CN,zh;q=0.9", "co.jp": "ja-JP,ja;q=0.9",
+    "co.uk": "en-GB,en;q=0.9", "co.za": "en-ZA,en;q=0.9", "com": "en-US,en;q=0.9",
+    "com.au": "en-AU,en;q=0.9", "com.br": "pt-BR,pt;q=0.9", "com.mx": "es-MX,es;q=0.9",
+    "com.ng": "en-NG,en;q=0.9", "com.tr": "tr-TR,tr;q=0.9", "de": "de-DE,de;q=0.9",
+    "eg": "ar-EG,ar;q=0.9", "es": "es-ES,es;q=0.9", "fr": "fr-FR,fr;q=0.9",
+    "ie": "en-IE,en;q=0.9", "in": "en-IN,en;q=0.9", "it": "it-IT,it;q=0.9",
+    "nl": "nl-NL,nl;q=0.9", "pl": "pl-PL,pl;q=0.9", "sa": "ar-SA,ar;q=0.9",
+    "se": "sv-SE,sv;q=0.9", "sg": "en-SG,en;q=0.9",
+}
+
 // Cache de resultados en memoria. Sin ella, cada carga de pagina se traduce en
 // una peticion nueva a Amazon aunque se repita la misma busqueda, lo que eleva
 // el volumen de trafico saliente y con el la probabilidad de acabar recibiendo
@@ -217,7 +239,15 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
         return resultsElement
     }
 
-    req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
+    // No se fija Accept-Encoding a proposito: cuando la cabecera se establece a
+    // mano, el Transport de net/http deja de descomprimir la respuesta de forma
+    // transparente y el cuerpo llegaria comprimido al parser.
+    req.Header.Set("User-Agent", userAgent)
+    req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+    req.Header.Set("Upgrade-Insecure-Requests", "1")
+    if idioma, ok := idiomaPorTLD[tld]; ok {
+        req.Header.Set("Accept-Language", idioma)
+    }
 
     res, err := clienteHTTP.Do(req)
     if err != nil {
@@ -466,6 +496,9 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
+    req.Header.Set("User-Agent", userAgent)
+    req.Header.Set("Accept", "image/avif,image/webp,*/*")
+
     resp, err := clienteHTTP.Do(req)
     if err != nil {
         http.Error(w, err.Error(), http.StatusServiceUnavailable)
