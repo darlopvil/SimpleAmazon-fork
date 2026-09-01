@@ -18,16 +18,52 @@ import ( "fmt"
 )
 
 var (
-    //go:embed templates/index.html
-    indexTemplate string
-    //go:embed templates/searchResults.html
-    searchResultsTemplate string
-    //go:embed templates/unhandled.html
-    unhandledTemplate string
+    //go:embed templates
+    plantillasFS embed.FS
 
     //go:embed static
     staticFiles embed.FS
 )
+
+// Opcion del selector de ordenacion. Antes las cinco opciones estaban escritas
+// a mano en cada plantilla, con un if/else por opcion para marcar la elegida.
+type opcionOrden struct {
+    Valor    string
+    Etiqueta string
+}
+
+var opcionesOrden = []opcionOrden{
+    {"", "Featured"},
+    {"price-asc-rank", "Price: Low to High"},
+    {"price-desc-rank", "Price: High to Low"},
+    {"review-rank", "Avg. Customer Review"},
+    {"date-desc-rank", "Newest Arrivals"},
+}
+
+var funcionesPlantilla = template.FuncMap{
+    "substract": func(a, b int) int {
+        return a - b
+    },
+    "add": func(a, b int) int {
+        return a + b
+    },
+    "opcionesOrden": func() []opcionOrden {
+        return opcionesOrden
+    },
+}
+
+// Cada pagina se parsea en su propio conjunto: la plantilla base, las parciales
+// comunes y el fichero que define el bloque "contenido". Un unico conjunto no
+// serviria, porque las tres paginas definen ese mismo bloque.
+func cargarPlantilla(pagina string) *template.Template {
+    return template.Must(template.New("base.html").Funcs(funcionesPlantilla).ParseFS(
+        plantillasFS,
+        "templates/base.html",
+        "templates/formulario.html",
+        "templates/paginacion.html",
+        "templates/"+pagina,
+    ))
+}
 
 type SearchResult struct {
     Title string
@@ -41,6 +77,7 @@ type SearchResult struct {
 }
 
 type SearchResults struct {
+    Idioma string
     Pages int
     Page int
     TLD string
@@ -51,8 +88,24 @@ type SearchResults struct {
 }
 
 type TemplateValues struct {
-    Sort string
-    TLD string
+    Sort   string
+    TLD    string
+    Query  string
+    Idioma string
+}
+
+// Codigo de idioma para el atributo lang del documento, derivado del TLD. Antes
+// estaba fijado a "en" en las tres plantillas, con independencia del
+// marketplace consultado.
+func idiomaHTML(tld string) string {
+    cabecera, ok := idiomaPorTLD[tld]
+    if !ok {
+        return "en"
+    }
+    if i := strings.Index(cabecera, ","); i > 0 {
+        return cabecera[:i]
+    }
+    return cabecera
 }
 
 /*
@@ -68,16 +121,9 @@ type TemplateValues struct {
 // funciones. template.Must aborta el arranque si alguna es invalida, en lugar
 // de dejar un puntero nulo con el que la primera peticion provocaria un panic.
 var (
-    plantillaIndex     = template.Must(template.New("index").Parse(indexTemplate))
-    plantillaUnhandled = template.Must(template.New("unhandled").Parse(unhandledTemplate))
-    plantillaResultados = template.Must(template.New("searchResults.html").Funcs(template.FuncMap{
-        "substract": func(a, b int) int {
-            return a - b
-        },
-        "add": func(a, b int) int {
-            return a + b
-        },
-    }).Parse(searchResultsTemplate))
+    plantillaIndex      = cargarPlantilla("index.html")
+    plantillaUnhandled  = cargarPlantilla("unhandled.html")
+    plantillaResultados = cargarPlantilla("searchResults.html")
 )
 
 // User-Agent de una version reciente de Firefox. El valor anterior correspondia
@@ -308,6 +354,7 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
     resultsElement.TLD = tld
     resultsElement.Page = page
     resultsElement.Sort = sort
+    resultsElement.Idioma = idiomaHTML(tld)
 
     if !tldsPermitidos[tld] {
         resultsElement.Error = "TLD no permitido"
@@ -629,7 +676,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if err := plantillaResultados.Execute(w, result); err != nil {
+    if err := plantillaResultados.ExecuteTemplate(w, "base.html", result); err != nil {
         // La cabecera ya se envio, de modo que solo cabe dejar constancia.
         fmt.Println("error al renderizar los resultados:", err)
     }
@@ -715,6 +762,7 @@ func main() {
         } else {
             val.TLD = "com"
         }
+        val.Idioma = idiomaHTML(val.TLD)
 
 
         if r.URL.Path != "/" {
@@ -722,9 +770,9 @@ func main() {
             // habia forma de distinguir una direccion valida de una que no
             // existe. La plantilla se conserva como cuerpo de la respuesta.
             w.WriteHeader(http.StatusNotFound)
-            err = plantillaUnhandled.Execute(w, val)
+            err = plantillaUnhandled.ExecuteTemplate(w, "base.html", val)
         } else {
-            err = plantillaIndex.Execute(w, val)
+            err = plantillaIndex.ExecuteTemplate(w, "base.html", val)
         }
 
         if err != nil {

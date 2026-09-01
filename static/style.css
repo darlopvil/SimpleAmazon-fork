@@ -14,7 +14,8 @@ body {
 img {
     padding: 5px;
     max-height: 200px;
-    width: 125px;
+    width: auto;
+    max-width: 125px;
 }
 
 
@@ -61,6 +62,16 @@ a {
 
 table {
     border-collapse: collapse;
+    /* <center> centraba tambien los bloques hijos, no solo el texto. Al
+       sustituirlo por un div hay que centrar la tabla de forma explicita. */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* El texto de cada resultado se alinea a la izquierda; solo la cabecera y la
+   navegacion van centradas. */
+td {
+    text-align: left;
 }
 
 tr {
@@ -75,7 +86,8 @@ select:focus {
 }
 
 
-center {
+.contenedor {
+    text-align: center;
     background-color: #fff;
     box-shadow: 0px 0px 20px rgba(0,0,0,0.1);
     padding-bottom: 5px;
@@ -87,7 +99,7 @@ center {
         color: #ced4da;
     }
 
-    center {
+    .contenedor {
         background-color: #131618;
     }
 

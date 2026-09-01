@@ -1,71 +1,6 @@
-<!doctype html>
-
-<html lang="en">
-    <head>
-        <title>SimpleAmazon</title>
-        <meta name="description" contents="Simple and anonymous frontend for Amazon Search">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" type="text/css" href="/static/style.css">
-        <meta charset="UTF-8">
-    </head>
-
-    <body dir="auto">
-        <center>
-            <h2>SimpleAmazon (BETA)</h2>
-            <h5>A simple frontend for searching amazon.com</h5>
-
-            <form action="/s" method="POST">
-                <select name="s" id="s">
-                    {{ if (eq .Sort "") }}
-                        <option value="" selected>Featured</option>
-                    {{ else }}
-                        <option value="">Featured</option>
-                    {{ end }}
-
-                    {{ if (eq .Sort "price-asc-rank") }}
-                        <option value="price-asc-rank" selected>Price: Low to High</option>
-                    {{ else }}
-                        <option value="price-asc-rank">Price: Low to High</option>
-                    {{ end }}
-
-                    {{ if (eq .Sort "price-desc-rank") }}
-                        <option value="price-desc-rank" selected>Price: High to Low</option>
-                    {{ else }}
-                        <option value="price-desc-rank">Price: High to Low</option>
-                    {{ end }}
-
-                    {{ if (eq .Sort "review-rank") }}
-                        <option value="review-rank" selected>Avg. Customer Review</option>
-                    {{ else }}
-                        <option value="review-rank">Avg. Customer Review</option>
-                    {{ end }}
-
-                    {{ if (eq .Sort "date-desc-rank") }}
-                        <option value="date-desc-rank" selected>Newest Arrivals</option>
-                    {{ else }}
-                        <option value="date-desc-rank">Newest Arrivals</option>
-                    {{ end }}
-                </select>
-                <input size="35" style="max-width: 100%" type="text" name="k" id="k" placeholder="Amazon Search" value="{{ .Query }}"/>
-                <input size="5" type="text" name="tld" id="tld" placeholder="com" value="{{ .TLD }}"/>
-                <button type="submit">Search</button>
-            </form>
-
-            
-
-            {{ if (gt .Pages 1)}}
-                <br>
-                {{ if (gt .Page 1)}}
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ substract .Page 1}}">Previous</a>
-                    <b> | </b>
-                {{ end }}
-                Page {{ .Page }} of {{ .Pages }}
-                {{ if (lt .Page .Pages)}}
-                    <b> | </b>
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ add .Page 1}}">Next</a>
-                {{ end }}
-                <hr>
-            {{ end }}
+{{ define "contenido" }}
+            {{ template "paginacion" . }}
+            {{ if (gt .Pages 1)}}<hr>{{ end }}
 
             <table style="max-width: 800px">
             {{ range .Results }}
@@ -100,22 +35,6 @@
             {{ end }}
             </table>
 
-            {{ if (gt .Pages 1)}}
-                <hr>
-                {{ if (gt .Page 1)}}
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ substract .Page 1}}">Previous</a>
-                    <b> | </b>
-                {{ end }}
-                Page {{ .Page }} of {{ .Pages }}
-                {{ if (lt .Page .Pages)}}
-                    <b> | </b>
-                    <a href="/s?tld={{ .TLD }}&k={{ .Query }}&s={{ .Sort }}&page={{ add .Page 1}}">Next</a>
-                {{ end }}
-            {{ end }}
-
-        </center>
-
-        <br>
-        <a href="https://simple-web.org/projects/simpleamazon.html">Project Page</a> | <a href="https://codeberg.org/SimpleWeb/SimpleAmazon">Source Code</a>
-    </body>
-</html>
+            {{ if (gt .Pages 1)}}<hr>{{ end }}
+            {{ template "paginacion" . }}
+{{ end }}

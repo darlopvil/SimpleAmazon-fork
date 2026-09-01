@@ -1,0 +1,24 @@
+<!doctype html>
+
+<html lang="{{ .Idioma }}">
+    <head>
+        <title>SimpleAmazon</title>
+        <meta name="description" content="Simple and anonymous frontend for Amazon Search">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" type="text/css" href="/static/style.css">
+        <meta charset="UTF-8">
+    </head>
+
+    <body dir="auto">
+        <div class="contenedor">
+            <h2>SimpleAmazon (BETA)</h2>
+            <h5>A simple frontend for searching amazon.com</h5>
+
+            {{ template "formulario" . }}
+            {{ template "contenido" . }}
+        </div>
+
+        <br>
+        <a href="https://simple-web.org/projects/simpleamazon.html">Project Page</a> | <a href="https://codeberg.org/SimpleWeb/SimpleAmazon">Source Code</a>
+    </body>
+</html>
