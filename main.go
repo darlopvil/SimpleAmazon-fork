@@ -221,6 +221,20 @@ var tldsPermitidos = map[string]bool{
     "sa": true, "se": true, "sg": true,
 }
 
+// Criterios de ordenacion admitidos por Amazon. La cadena vacia corresponde al
+// orden por defecto, el que muestra la interfaz como "Featured".
+var ordenesPermitidos = map[string]bool{
+    "":                true,
+    "price-asc-rank":  true,
+    "price-desc-rank": true,
+    "review-rank":     true,
+    "date-desc-rank":  true,
+}
+
+// Amazon no pagina indefinidamente. Pedir mas alla de este limite no aporta
+// resultados y si una peticion saliente inutil.
+const paginaMaxima = 20
+
 // Hosts desde los que Amazon sirve las imagenes de los resultados. El proxy
 // solo reenvia peticiones a estos, y el host viaja dentro de la propia ruta
 // para no tener que darlo por supuesto.
@@ -509,7 +523,7 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
     tld := "com"
-    query := "default query, should never be shown."
+    query := ""
     page := 1
     sort := ""
 
@@ -573,6 +587,26 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+
+    // Sin termino de busqueda no hay nada que consultar. Antes la variable se
+    // inicializaba con una cadena de relleno que se acababa buscando de verdad
+    // en Amazon, gastando una peticion saliente a cambio de nada.
+    if strings.TrimSpace(query) == "" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+
+    if !ordenesPermitidos[sort] {
+        http.Error(w, "Criterio de ordenacion no admitido", http.StatusBadRequest)
+        return
+    }
+
+    // El numero de pagina se reenviaba tal cual a Amazon, incluidos negativos y
+    // valores arbitrariamente grandes.
+    if page < 1 || page > paginaMaxima {
+        http.Error(w, "Numero de pagina fuera de rango", http.StatusBadRequest)
+        return
+    }
 
     // save a cookie containing sorting and TLD (YAY! Session Management)
     http.SetCookie(w, &http.Cookie{
