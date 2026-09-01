@@ -221,6 +221,27 @@ var tldsPermitidos = map[string]bool{
     "sa": true, "se": true, "sg": true,
 }
 
+// Hosts desde los que Amazon sirve las imagenes de los resultados. El proxy
+// solo reenvia peticiones a estos, y el host viaja dentro de la propia ruta
+// para no tener que darlo por supuesto.
+var cdnsImagen = map[string]bool{
+    "m.media-amazon.com":              true,
+    "images-na.ssl-images-amazon.com": true,
+    "images-eu.ssl-images-amazon.com": true,
+}
+
+// Convierte la URL de una imagen en una ruta del proxy. Antes se recortaba un
+// numero fijo de caracteres, correcto solo para m.media-amazon.com; con los
+// otros dos hosts el corte caia en mitad del dominio y producia una ruta sin
+// sentido que el proxy reenviaba igualmente.
+func rutaProxyImagen(src string) string {
+    u, err := url.Parse(src)
+    if err != nil || !cdnsImagen[u.Host] {
+        return ""
+    }
+    return "/mediaproxy/" + u.Host + u.Path
+}
+
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
 // ruta relativa y otras una URL absoluta. La plantilla concatenaba el dominio
 // sin comprobarlo, lo que en el segundo caso producia enlaces del tipo
@@ -423,11 +444,8 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
         price := result.Find("span.a-price > span.a-offscreen").First().Text()
         type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
 
-        image, _ := result.Find("img.s-image").First().Attr("src")
-        // length of https://m.media-amazon.com : 26
-        if len(image) > 26 {
-            image = "/mediaproxy" + image[26:]
-        }
+        imagenSrc, _ := result.Find("img.s-image").First().Attr("src")
+        image := rutaProxyImagen(imagenSrc)
 
         // Valoracion y numero de resenas. Se anclan al atributo data-cy en vez
         // de a la cadena de clases utilitarias, y se leen de donde Amazon los
@@ -576,10 +594,16 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func proxyMedia(w http.ResponseWriter, r *http.Request) {
-    // len of /mediaproxy: 12
-    url := r.URL.Path[12:]
+    // La ruta tiene la forma /mediaproxy/{host}/{recurso}. El host se valida
+    // contra la lista de CDN conocidos antes de construir la peticion.
+    resto := strings.TrimPrefix(r.URL.Path, "/mediaproxy/")
+    host, recurso, ok := strings.Cut(resto, "/")
+    if !ok || !cdnsImagen[host] {
+        http.Error(w, "Origen de imagen no permitido", http.StatusForbidden)
+        return
+    }
 
-    req, err := http.NewRequestWithContext(r.Context(), "GET", "https://m.media-amazon.com/"+url, nil)
+    req, err := http.NewRequestWithContext(r.Context(), "GET", "https://"+host+"/"+recurso, nil)
     if err != nil {
         http.Error(w, "Peticion de imagen invalida", http.StatusBadRequest)
         return
