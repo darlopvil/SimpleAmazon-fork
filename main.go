@@ -4,6 +4,7 @@ import ( "fmt"
     "strconv"
     "net/url"
     "context"
+    "bytes"
     "net/http"
     "html/template"
     "math"
@@ -60,6 +61,30 @@ type TemplateValues struct {
 3: Avg. Customer Review: review-rank
 4: Newest Arrivals: date-desc-rank
 */
+
+// Limite de lectura del cuerpo de la respuesta. Una pagina de resultados ronda
+// los 2 MB; el margen cubre las mas cargadas sin permitir que una respuesta
+// anomala agote la memoria del proceso.
+const maxCuerpo = 8 << 20
+
+// Marcadores de las paginas que Amazon sirve con codigo 200 en lugar de
+// resultados. bm-verify pertenece al interstitial de Akamai Bot Manager, que
+// exige ejecutar JavaScript; el resto, a la pagina de captcha clasica.
+var marcadoresBloqueo = [][]byte{
+    []byte("bm-verify"),
+    []byte("/errors/validateCaptcha"),
+    []byte("api-services-support@amazon.com"),
+}
+
+func esBloqueo(cuerpo []byte) bool {
+    for _, m := range marcadoresBloqueo {
+        if bytes.Contains(cuerpo, m) {
+            return true
+        }
+    }
+    return false
+}
+
 
 // Cliente compartido para todas las peticiones salientes. El cliente por
 // defecto de net/http no tiene timeout, asi que una respuesta que nunca llega
@@ -137,8 +162,22 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
         return resultsElement
     }
 
+    // El cuerpo se lee a memoria para poder inspeccionarlo antes de parsearlo:
+    // las paginas de verificacion llegan con codigo 200 y sin ellas se
+    // interpretarian como una busqueda sin resultados.
+    cuerpo, err := io.ReadAll(io.LimitReader(res.Body, maxCuerpo))
+    if err != nil {
+        resultsElement.Error = fmt.Sprintf("Couldn't read search result: %s", err)
+        return resultsElement
+    }
+
+    if esBloqueo(cuerpo) {
+        resultsElement.Error = "Amazon ha respondido con una verificacion antibot en lugar de resultados. Intentalo de nuevo en unos minutos."
+        return resultsElement
+    }
+
     // Load the HTML document
-    doc, err := goquery.NewDocumentFromReader(res.Body)
+    doc, err := goquery.NewDocumentFromReader(bytes.NewReader(cuerpo))
     if err != nil {
         resultsElement.Error = fmt.Sprintf("Couldn't parse HTML result: %s", err)
         return resultsElement
