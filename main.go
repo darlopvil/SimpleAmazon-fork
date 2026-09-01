@@ -282,11 +282,14 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
         return resultsElement
     }
 
-    //find out how many pages of search results there are
-    //sadly amazon's pagination is inconsistent, so we need to do this to get a consistent result
+    // Numero de paginas de resultados. Se recorre con Find y no con
+    // ChildrenFiltered porque los elementos de paginacion no son hijos directos
+    // del contenedor: cuelgan de una lista intermedia, en la mayoria de los
+    // casos a traves de un li y un span. Los que no llevan numero (flechas de
+    // avance y retroceso, puntos suspensivos) los descarta la conversion.
     largestPage := 1
-    doc.Find("span.s-pagination-strip").ChildrenFiltered(".s-pagination-item").Each(func(i int, child *goquery.Selection) {
-        page, _ := strconv.Atoi(child.Text())
+    doc.Find("span.s-pagination-strip").Find(".s-pagination-item").Each(func(i int, child *goquery.Selection) {
+        page, _ := strconv.Atoi(strings.TrimSpace(child.Text()))
         if page > largestPage {
             largestPage = page
         }
