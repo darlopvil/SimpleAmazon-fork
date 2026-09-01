@@ -5,6 +5,7 @@ import ( "fmt"
     "net/url"
     "context"
     "bytes"
+    "sync"
     "net/http"
     "html/template"
     "math"
@@ -61,6 +62,67 @@ type TemplateValues struct {
 3: Avg. Customer Review: review-rank
 4: Newest Arrivals: date-desc-rank
 */
+
+// Cache de resultados en memoria. Sin ella, cada carga de pagina se traduce en
+// una peticion nueva a Amazon aunque se repita la misma busqueda, lo que eleva
+// el volumen de trafico saliente y con el la probabilidad de acabar recibiendo
+// una verificacion antibot.
+//
+// El TTL es corto a proposito: los precios cambian y no interesa servir datos
+// rancios.
+const (
+    ttlCache         = 10 * time.Minute
+    maxEntradasCache = 256
+)
+
+type entradaCache struct {
+    resultado SearchResults
+    expira    time.Time
+}
+
+var (
+    cacheMu sync.Mutex
+    cache   = map[string]entradaCache{}
+)
+
+func claveCache(tld string, searchTerm string, page int, sort string) string {
+    // El separador nulo evita que combinaciones distintas produzcan la misma
+    // clave al concatenarse.
+    return tld + "\x00" + searchTerm + "\x00" + strconv.Itoa(page) + "\x00" + sort
+}
+
+func cacheGet(clave string) (SearchResults, bool) {
+    cacheMu.Lock()
+    defer cacheMu.Unlock()
+    e, ok := cache[clave]
+    if !ok {
+        return SearchResults{}, false
+    }
+    if time.Now().After(e.expira) {
+        delete(cache, clave)
+        return SearchResults{}, false
+    }
+    return e.resultado, true
+}
+
+func cacheSet(clave string, resultado SearchResults) {
+    cacheMu.Lock()
+    defer cacheMu.Unlock()
+    if len(cache) >= maxEntradasCache {
+        ahora := time.Now()
+        for k, e := range cache {
+            if ahora.After(e.expira) {
+                delete(cache, k)
+            }
+        }
+        // Si la purga de caducadas no libera nada, se descarta todo: acotar la
+        // memoria importa mas que conservar entradas concretas.
+        if len(cache) >= maxEntradasCache {
+            cache = map[string]entradaCache{}
+        }
+    }
+    cache[clave] = entradaCache{resultado: resultado, expira: time.Now().Add(ttlCache)}
+}
 
 // Limite de lectura del cuerpo de la respuesta. Una pagina de resultados ronda
 // los 2 MB; el margen cubre las mas cargadas sin permitir que una respuesta
@@ -125,6 +187,13 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
     if !tldsPermitidos[tld] {
         resultsElement.Error = "TLD no permitido"
         return resultsElement
+    }
+
+    // Las entradas se guardan y se devuelven sin copiar, asi que a partir de
+    // aqui el resultado no debe modificarse: solo se pasa a la plantilla.
+    clave := claveCache(tld, searchTerm, page, sort)
+    if cacheado, ok := cacheGet(clave); ok {
+        return cacheado
     }
 
     // build the url
@@ -272,6 +341,10 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
     })
 
     resultsElement.Results = searchResults
+
+    // Solo se cachean las busquedas correctas: un error o un bloqueo no debe
+    // quedarse fijado durante todo el TTL.
+    cacheSet(clave, resultsElement)
 
     return resultsElement
 }
