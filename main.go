@@ -63,6 +63,23 @@ type TemplateValues struct {
 4: Newest Arrivals: date-desc-rank
 */
 
+// Las plantillas se parsean una sola vez, al inicializar el paquete. La de
+// resultados se volvia a parsear en cada peticion, junto con su mapa de
+// funciones. template.Must aborta el arranque si alguna es invalida, en lugar
+// de dejar un puntero nulo con el que la primera peticion provocaria un panic.
+var (
+    plantillaIndex     = template.Must(template.New("index").Parse(indexTemplate))
+    plantillaUnhandled = template.Must(template.New("unhandled").Parse(unhandledTemplate))
+    plantillaResultados = template.Must(template.New("searchResults.html").Funcs(template.FuncMap{
+        "substract": func(a, b int) int {
+            return a - b
+        },
+        "add": func(a, b int) int {
+            return a + b
+        },
+    }).Parse(searchResultsTemplate))
+)
+
 // User-Agent de una version reciente de Firefox. El valor anterior correspondia
 // a Firefox 47, de 2016, lo que destaca de inmediato ante cualquier heuristica
 // de deteccion. Conviene revisarlo de vez en cuando.
@@ -202,6 +219,25 @@ var tldsPermitidos = map[string]bool{
     "com.tr": true, "de": true, "eg": true, "es": true, "fr": true,
     "ie": true, "in": true, "it": true, "nl": true, "pl": true,
     "sa": true, "se": true, "sg": true,
+}
+
+// Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
+// ruta relativa y otras una URL absoluta. La plantilla concatenaba el dominio
+// sin comprobarlo, lo que en el segundo caso producia enlaces del tipo
+// https://amazon.eshttps://www.amazon.es/...
+func urlAbsoluta(tld string, enlace string) string {
+    if enlace == "" {
+        return ""
+    }
+    if strings.HasPrefix(enlace, "http://") || strings.HasPrefix(enlace, "https://") {
+        return enlace
+    }
+    if !strings.HasPrefix(enlace, "/") {
+        enlace = "/" + enlace
+    }
+    // Se usa el subdominio www porque el dominio desnudo redirige a el, y asi
+    // se evita un salto innecesario al pulsar el enlace.
+    return "https://www.amazon." + tld + enlace
 }
 
 // Extrae el numero de resenas de un aria-label del tipo "5.179 calificaciones"
@@ -414,7 +450,13 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
         limitedSupply := limitedSupplyEl.Find("span.a-size-base.a-color-price").Text()
 
 
-        if strings.Trim(title, " ") != "" {
+        // La URL se deja construida aqui, no en la plantilla, para que esta no
+        // tenga que saber si el enlace venia relativo o absoluto.
+        link = urlAbsoluta(tld, link)
+
+        // Sin enlace no hay resultado que ofrecer: antes se emitia un enlace a
+        // la portada de Amazon, que no lleva al producto.
+        if strings.Trim(title, " ") != "" && link != "" {
             var res SearchResult
 
             res.Title = title
@@ -527,24 +569,9 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // expose simple add / subtract functions to the template
-    fm := template.FuncMap{
-        "substract": func(a, b int) int {
-            return a - b
-        },
-        "add": func(a, b int) int {
-            return a + b
-        },
-    }
-
-    t, err := template.New("searchResults.html").Funcs(fm).Parse(searchResultsTemplate)
-    if err != nil {
-        fmt.Println(err)
-    }
-    err = t.Execute(w, result)
-
-    if err != nil {
-        fmt.Println(err)
+    if err := plantillaResultados.Execute(w, result); err != nil {
+        // La cabecera ya se envio, de modo que solo cabe dejar constancia.
+        fmt.Println("error al renderizar los resultados:", err)
     }
 }
 
@@ -599,15 +626,6 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    indexTempl, err := template.New("index").Parse(indexTemplate)
-    if err != nil {
-        panic(err)
-    }
-    unhandledTempl, err := template.New("unhandled").Parse(unhandledTemplate)
-    if err != nil {
-        panic(err)
-    }
-
     port := flag.Int("p", 8080, "Port")
     host := flag.String("h", "localhost", "Host")
     flag.Parse()
@@ -638,9 +656,9 @@ func main() {
             // habia forma de distinguir una direccion valida de una que no
             // existe. La plantilla se conserva como cuerpo de la respuesta.
             w.WriteHeader(http.StatusNotFound)
-            err = unhandledTempl.Execute(w, val)
+            err = plantillaUnhandled.Execute(w, val)
         } else {
-            err = indexTempl.Execute(w, val)
+            err = plantillaIndex.Execute(w, val)
         }
 
         if err != nil {

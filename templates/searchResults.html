@@ -51,7 +51,7 @@
                 <button type="submit">Search</button>
             </form>
 
-            {{ $tld := .TLD }}
+            
 
             {{ if (gt .Pages 1)}}
                 <br>
@@ -72,7 +72,7 @@
                 <tr>
                     <td><a href="{{ .ImageURL }}"><img src="{{ .ImageURL }}"></a></td>
                     <td valign="top">
-                        <span class="article-title"><a href="https://amazon.{{$tld}}{{.URL}}">{{ .Title }}</a></span>
+                        <span class="article-title"><a href="{{ .URL }}">{{ .Title }}</a></span>
                         <br>
 
                         {{ if .Ratings }}
