@@ -360,6 +360,14 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
     }
 
     if esBloqueo(cuerpo) {
+        // Se registra el detalle de la respuesta bloqueada. Sin estos datos no
+        // hay forma de saber por que Amazon rechaza una peticion concreta:
+        // desde fuera, un bloqueo es indistinguible de otro.
+        fmt.Printf("bloqueo antibot: tld=%s protocolo=%s bytes=%d server=%q via=%q rid=%q\n",
+            tld, res.Proto, len(cuerpo),
+            res.Header.Get("Server"),
+            res.Header.Get("Via"),
+            res.Header.Get("X-Amz-Rid"))
         resultsElement.Error = "Amazon ha respondido con una verificacion antibot en lugar de resultados. Intentalo de nuevo en unos minutos."
         return resultsElement
     }
