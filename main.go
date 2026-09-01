@@ -151,6 +151,11 @@ func cacheSet(clave string, resultado SearchResults) {
 // anomala agote la memoria del proceso.
 const maxCuerpo = 8 << 20
 
+// Limite del cuerpo que el proxy de imagenes reenvia al cliente. Las miniaturas
+// de una pagina de resultados no llegan a los 100 KB; el margen es amplio y aun
+// asi acota lo que un solo recurso puede transferir.
+const maxImagen = 5 << 20
+
 // Marcadores de las paginas que Amazon sirve con codigo 200 en lugar de
 // resultados. bm-verify pertenece al interstitial de Akamai Bot Manager, que
 // exige ejecutar JavaScript; el resto, a la pagina de captcha clasica.
@@ -496,7 +501,7 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 
     req, err := http.NewRequestWithContext(r.Context(), "GET", "https://m.media-amazon.com/"+url, nil)
     if err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
+        http.Error(w, "Peticion de imagen invalida", http.StatusBadRequest)
         return
     }
     req.Header.Set("User-Agent", userAgent)
@@ -504,11 +509,40 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 
     resp, err := clienteHTTP.Do(req)
     if err != nil {
-        http.Error(w, err.Error(), http.StatusServiceUnavailable)
+        http.Error(w, "No se pudo obtener la imagen", http.StatusServiceUnavailable)
         return
     }
     defer resp.Body.Close()
-    io.Copy(w, resp.Body)
+
+    // Sin esta comprobacion, un 404 o un 403 del upstream se reenviaba como un
+    // 200 con el cuerpo del error dentro.
+    if resp.StatusCode != http.StatusOK {
+        http.Error(w, "La imagen no esta disponible", http.StatusBadGateway)
+        return
+    }
+
+    // Solo se reenvian imagenes. Sin esta comprobacion el navegador aplicaria
+    // su propia deteccion de tipo sobre un contenido que no controlamos.
+    tipo := resp.Header.Get("Content-Type")
+    if !strings.HasPrefix(tipo, "image/") {
+        http.Error(w, "El recurso solicitado no es una imagen", http.StatusBadGateway)
+        return
+    }
+
+    w.Header().Set("Content-Type", tipo)
+    w.Header().Set("X-Content-Type-Options", "nosniff")
+    // Las URL de imagen de Amazon incluyen el identificador del recurso, asi
+    // que su contenido no cambia. Cachearlas evita repetir la peticion saliente
+    // en cada carga de pagina.
+    w.Header().Set("Cache-Control", "public, max-age=86400")
+    if resp.ContentLength > 0 {
+        w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+    }
+
+    if _, err := io.Copy(w, io.LimitReader(resp.Body, maxImagen)); err != nil {
+        // La cabecera ya se envio, de modo que solo cabe dejar constancia.
+        fmt.Println("error al reenviar la imagen:", err)
+    }
 }
 
 func main() {
