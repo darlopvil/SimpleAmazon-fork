@@ -3,12 +3,14 @@ import ( "fmt"
     "strings"
     "strconv"
     "net/url"
+    "context"
     "net/http"
     "html/template"
     "math"
     "io"
     "flag"
     "embed"
+    "time"
     
     "github.com/PuerkitoBio/goquery"
 )
@@ -59,6 +61,22 @@ type TemplateValues struct {
 4: Newest Arrivals: date-desc-rank
 */
 
+// Cliente compartido para todas las peticiones salientes. El cliente por
+// defecto de net/http no tiene timeout, asi que una respuesta que nunca llega
+// deja la goroutine que la espera colgada de forma indefinida.
+var clienteHTTP = &http.Client{
+    Timeout: 15 * time.Second,
+    Transport: &http.Transport{
+        // El Transport por defecto de net/http lo activa; al construir uno a
+        // medida hay que fijarlo de forma explicita o las peticiones salientes
+        // caen a HTTP/1.1 sin avisar.
+        ForceAttemptHTTP2:   true,
+        MaxIdleConns:        20,
+        IdleConnTimeout:     60 * time.Second,
+        TLSHandshakeTimeout: 5 * time.Second,
+    },
+}
+
 // TLDs de los marketplaces que opera Amazon. El valor llega del usuario y se
 // concatena en la URL de destino, asi que se valida contra esta lista cerrada:
 // sin ella, un valor como "com@ejemplo.org" dirige la peticion saliente a un
@@ -72,7 +90,7 @@ var tldsPermitidos = map[string]bool{
     "sa": true, "se": true, "sg": true,
 }
 
-func search(tld string, searchTerm string, page int, sort string) SearchResults {
+func search(ctx context.Context, tld string, searchTerm string, page int, sort string) SearchResults {
     var resultsElement SearchResults
     resultsElement.Query = searchTerm
     resultsElement.TLD = tld
@@ -99,8 +117,7 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
 
 
     // Request the page
-    client := &http.Client{}
-    req, err := http.NewRequest("GET", requestURL.String(), nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", requestURL.String(), nil)
     if err != nil {
         resultsElement.Error = fmt.Sprintf("Error creating request %s", err)
         return resultsElement
@@ -108,7 +125,7 @@ func search(tld string, searchTerm string, page int, sort string) SearchResults 
 
     req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0")
 
-    res, err := client.Do(req)
+    res, err := clienteHTTP.Do(req)
     if err != nil {
         resultsElement.Error = fmt.Sprintf("Couldn't fetch search result: %s", err)
         return resultsElement
@@ -300,7 +317,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
     // get the result
 
-    result := search(tld, query, page, sort)
+    result := search(r.Context(), tld, query, page, sort)
 
     if result.Error != "" {
         fmt.Fprintf(w, result.Error)
@@ -332,7 +349,12 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
     // len of /mediaproxy: 12
     url := r.URL.Path[12:]
 
-    resp, err := http.Get("https://m.media-amazon.com/" + url)
+    req, err := http.NewRequestWithContext(r.Context(), "GET", "https://m.media-amazon.com/"+url, nil)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    resp, err := clienteHTTP.Do(req)
     if err != nil {
         http.Error(w, err.Error(), http.StatusServiceUnavailable)
         return
@@ -388,5 +410,14 @@ func main() {
 
     http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
 
-    fmt.Println(http.ListenAndServe(*host + ":" + strconv.Itoa(*port), nil))
+    // ListenAndServe usa un servidor sin ningun timeout, vulnerable a que un
+    // cliente lento mantenga conexiones abiertas indefinidamente.
+    srv := &http.Server{
+        Addr:              *host + ":" + strconv.Itoa(*port),
+        ReadHeaderTimeout: 5 * time.Second,
+        ReadTimeout:       15 * time.Second,
+        WriteTimeout:      30 * time.Second,
+        IdleTimeout:       60 * time.Second,
+    }
+    fmt.Println(srv.ListenAndServe())
 }
