@@ -412,7 +412,11 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	}
 
 	// build the url
-	requestURL, err := url.Parse("https://amazon." + tld + "/s")
+	// Se ataca el subdominio www y no el dominio desnudo. Este ultimo es solo
+	// un servicio de redireccion que ademas no ofrece HTTP/2: comprobado, el
+	// dominio desnudo negocia HTTP/1.1 y www negocia HTTP/2. Eso obligaba a un
+	// salto adicional en cada busqueda y degradaba el protocolo.
+	requestURL, err := url.Parse("https://www.amazon." + tld + "/s")
 	if err != nil {
 		resultsElement.Error = "No se pudo construir la URL de busqueda"
 		resultsElement.Estado = http.StatusBadRequest
