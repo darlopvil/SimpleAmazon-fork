@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Noooste/azuretls-client"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -257,27 +258,90 @@ func imprimirHuella() {
 	ctx, cancelar := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelar()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", urlHuella, nil)
-	if err != nil {
-		fmt.Println("no se pudo preparar la peticion:", err)
-		os.Exit(1)
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := clienteHTTP.Do(req)
+	resp, err := obtener(ctx, urlHuella, [][2]string{{"User-Agent", userAgent}}, 1<<20)
 	if err != nil {
 		fmt.Println("no se pudo consultar la huella:", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
 
-	cuerpo, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		fmt.Println("no se pudo leer la respuesta:", err)
-		os.Exit(1)
+	fmt.Printf("protocolo negociado: %s\nuser-agent enviado: %s\n\n%s\n", resp.Proto, userAgent, resp.Cuerpo)
+}
+
+// Sesion que imita la huella de un navegador. Se crea solo si se solicita por
+// linea de ordenes; mientras sea nil se usa el cliente estandar.
+//
+// Amazon esta detras de un servicio antibot que puntua la huella de la conexion
+// en dos ejes independientes: el saludo TLS y el perfil de tramas HTTP/2. El
+// cliente estandar de Go tiene ambos catalogados, y actuar solo sobre uno no
+// sirve de nada, porque el fingerprint de HTTP/2 no depende de las cifras ni de
+// las extensiones TLS.
+var sesionNavegador *azuretls.Session
+
+// Respuesta minima comun a los dos clientes. Cada uno usa tipos incompatibles
+// entre si, de modo que las peticiones salientes pasan por esta capa en lugar
+// de manejar directamente uno u otro.
+type respuestaSaliente struct {
+	Estado   int
+	Proto    string
+	Cabecera func(string) string
+	Cuerpo   []byte
+}
+
+// Realiza una peticion saliente con el cliente activo. Las cabeceras se pasan
+// en orden porque su secuencia es una de las senales que el servicio antibot
+// inspecciona.
+func obtener(ctx context.Context, destino string, cabeceras [][2]string, limite int64) (*respuestaSaliente, error) {
+	if sesionNavegador != nil {
+		ordenadas := make(azuretls.OrderedHeaders, 0, len(cabeceras))
+		for _, c := range cabeceras {
+			ordenadas = append(ordenadas, []string{c[0], c[1]})
+		}
+
+		resp, err := sesionNavegador.Do(&azuretls.Request{
+			Method:         "GET",
+			Url:            destino,
+			OrderedHeaders: ordenadas,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		cuerpo := resp.Body
+		if int64(len(cuerpo)) > limite {
+			cuerpo = cuerpo[:limite]
+		}
+		return &respuestaSaliente{
+			Estado:   resp.StatusCode,
+			Proto:    "HTTP/2.0",
+			Cabecera: resp.Header.Get,
+			Cuerpo:   cuerpo,
+		}, nil
 	}
 
-	fmt.Printf("protocolo negociado: %s\nuser-agent enviado: %s\n\n%s\n", resp.Proto, userAgent, cuerpo)
+	req, err := http.NewRequestWithContext(ctx, "GET", destino, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cabeceras {
+		req.Header.Set(c[0], c[1])
+	}
+
+	res, err := clienteHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	cuerpo, err := io.ReadAll(io.LimitReader(res.Body, limite))
+	if err != nil {
+		return nil, err
+	}
+	return &respuestaSaliente{
+		Estado:   res.StatusCode,
+		Proto:    res.Proto,
+		Cabecera: res.Header.Get,
+		Cuerpo:   cuerpo,
+	}, nil
 }
 
 // Cliente compartido para todas las peticiones salientes. El cliente por
@@ -429,44 +493,37 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	parameters.Add("s", sort)
 	requestURL.RawQuery = parameters.Encode()
 
-	// Request the page
-	req, err := http.NewRequestWithContext(ctx, "GET", requestURL.String(), nil)
-	if err != nil {
-		resultsElement.Error = "No se pudo preparar la peticion a Amazon"
-		resultsElement.Estado = http.StatusInternalServerError
-		return resultsElement
-	}
-
 	// No se fija Accept-Encoding a proposito: cuando la cabecera se establece a
 	// mano, el Transport de net/http deja de descomprimir la respuesta de forma
 	// transparente y el cuerpo llegaria comprimido al parser.
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	cabeceras := [][2]string{
+		{"User-Agent", userAgent},
+		{"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"},
+		{"Upgrade-Insecure-Requests", "1"},
+	}
 	if idioma, ok := idiomaPorTLD[tld]; ok {
-		req.Header.Set("Accept-Language", idioma)
+		cabeceras = append(cabeceras, [2]string{"Accept-Language", idioma})
 	}
 
-	res, err := clienteHTTP.Do(req)
+	res, err := obtener(ctx, requestURL.String(), cabeceras, maxCuerpo)
 	if err != nil {
 		fmt.Println("fallo al contactar con Amazon:", err)
 		resultsElement.Error = "No se pudo contactar con Amazon"
 		resultsElement.Estado = http.StatusBadGateway
 		return resultsElement
 	}
-	defer res.Body.Close()
 
-	if res.StatusCode != 200 {
-		fmt.Println("Amazon respondio con estado:", res.Status)
+	if res.Estado != 200 {
+		fmt.Println("Amazon respondio con estado:", res.Estado)
 		resultsElement.Error = "Amazon ha respondido con un error"
 		resultsElement.Estado = http.StatusBadGateway
 		return resultsElement
 	}
 
-	// El cuerpo se lee a memoria para poder inspeccionarlo antes de parsearlo:
-	// las paginas de verificacion llegan con codigo 200 y sin ellas se
-	// interpretarian como una busqueda sin resultados.
-	cuerpo, err := io.ReadAll(io.LimitReader(res.Body, maxCuerpo))
+	// El cuerpo ya viene leido y acotado: las paginas de verificacion llegan
+	// con codigo 200 y hay que inspeccionarlo antes de parsearlo, porque de lo
+	// contrario se interpretarian como una busqueda sin resultados.
+	cuerpo := res.Cuerpo
 	if err != nil {
 		fmt.Println("fallo al leer la respuesta de Amazon:", err)
 		resultsElement.Error = "No se pudo leer la respuesta de Amazon"
@@ -480,9 +537,9 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 		// desde fuera, un bloqueo es indistinguible de otro.
 		fmt.Printf("bloqueo antibot: tld=%s protocolo=%s bytes=%d server=%q via=%q rid=%q\n",
 			tld, res.Proto, len(cuerpo),
-			res.Header.Get("Server"),
-			res.Header.Get("Via"),
-			res.Header.Get("X-Amz-Rid"))
+			res.Cabecera("Server"),
+			res.Cabecera("Via"),
+			res.Cabecera("X-Amz-Rid"))
 		resultsElement.Error = "Amazon ha respondido con una verificacion antibot en lugar de resultados. Intentalo de nuevo en unos minutos."
 		resultsElement.Estado = http.StatusServiceUnavailable
 		return resultsElement
@@ -808,7 +865,17 @@ func main() {
 	port := flag.Int("p", 8080, "Port")
 	host := flag.String("h", "localhost", "Host")
 	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
+	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go o navegador")
 	flag.Parse()
+
+	// El cliente estandar sigue siendo el predeterminado. El perfil de
+	// navegador se activa de forma explicita, de modo que se puede volver al
+	// comportamiento anterior sin recompilar.
+	if *perfil == "navegador" {
+		sesionNavegador = azuretls.NewSession()
+		sesionNavegador.Browser = azuretls.Firefox
+		fmt.Println("huella: imitando navegador (TLS y HTTP/2)")
+	}
 
 	if *huella {
 		imprimirHuella()
