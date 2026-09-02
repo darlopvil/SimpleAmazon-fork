@@ -22,8 +22,15 @@
 
                         {{ if .Price }}
                             <span class="price">{{ .Price }}</span>
+                            {{ if .PrecioTachado }}
+                                <span class="precioTachado">{{ .PrecioTachado }}</span>
+                            {{ end }}
+                            {{ if .Condicion }}
+                                <br>
+                                <span class="condicion">{{ .Condicion }}</span>
+                            {{ end }}
                         {{ else }}
-                            <span>Not available or only available through subscription</span>
+                            <span>Precio no disponible</span>
                         {{ end }}
 
                         {{ if .LimitedSupply }}

@@ -70,6 +70,12 @@ func cargarPlantilla(pagina string) *template.Template {
 }
 
 type SearchResult struct {
+	// Precio de referencia tachado y condicion de acceso, tal como los
+	// publica Amazon. Un importe de cero corresponde casi siempre a un
+	// audiolibro o a un titulo incluido en una suscripcion, y sin esa
+	// explicacion resulta enganoso.
+	PrecioTachado string
+	Condicion     string
 	Title         string
 	URL           string
 	Price         string
@@ -414,6 +420,91 @@ func rutaProxyImagen(src string) string {
 	return "/mediaproxy/" + u.Host + u.Path
 }
 
+// Formato de un producto con su precio. Amazon presenta las tarjetas con varias
+// ediciones como una lista de bloques dentro del mismo contenedor, separados
+// por un divisor.
+type formatoPrecio struct {
+	Formato string
+	Precio  string
+}
+
+// Importe numérico de un precio, para poder compararlos entre sí. Se aceptan
+// tanto el punto como la coma decimal, porque el formato varía según el
+// marketplace.
+func importePrecio(precio string) (float64, bool) {
+	var digitos strings.Builder
+	for _, r := range precio {
+		switch {
+		case r >= '0' && r <= '9':
+			digitos.WriteRune(r)
+		case r == ',' || r == '.':
+			digitos.WriteRune('.')
+		}
+	}
+	texto := digitos.String()
+	// El último separador es el decimal; los anteriores son de millares.
+	if i := strings.LastIndex(texto, "."); i >= 0 {
+		texto = strings.ReplaceAll(texto[:i], ".", "") + texto[i:]
+	}
+	valor, err := strconv.ParseFloat(texto, 64)
+	return valor, err == nil
+}
+
+// Empareja cada formato con su precio dentro de la tarjeta. Antes se tomaba el
+// primer precio suelto, que podía ser el de una edición irrelevante, y el
+// nombre del formato se obtenía con Text sobre toda la selección, lo que
+// concatenaba los de todos los formatos sin separador.
+//
+// Se excluyen los precios marcados como a-text-price, que corresponden al
+// importe tachado de referencia y al precio por unidad.
+func formatosYPrecios(result *goquery.Selection) []formatoPrecio {
+	bloque := result.Find("[data-cy='price-recipe']").First()
+
+	var pares []formatoPrecio
+	bloque.Find("a.a-text-bold, span.a-price:not(.a-text-price) > span.a-offscreen").
+		Each(func(i int, s *goquery.Selection) {
+			texto := strings.TrimSpace(s.Text())
+			if goquery.NodeName(s) == "a" {
+				pares = append(pares, formatoPrecio{Formato: texto})
+				return
+			}
+			if len(pares) > 0 && pares[len(pares)-1].Precio == "" {
+				pares[len(pares)-1].Precio = texto
+				return
+			}
+			pares = append(pares, formatoPrecio{Precio: texto})
+		})
+	return pares
+}
+
+// Precio de referencia tachado, si Amazon lo publica.
+func precioTachado(result *goquery.Selection) string {
+	return strings.TrimSpace(result.Find(
+		"[data-cy='price-recipe'] span.a-price.a-text-price[data-a-strike='true'] > span.a-offscreen").
+		First().Text())
+}
+
+// Condicion de acceso al producto cuando su importe es cero. Amazon lo indica
+// con textos del tipo "Gratis con la prueba de Audible" o "Incluido con una
+// suscripcion Kindle Unlimited". Sin ese dato, un precio de cero se confunde
+// con un producto gratuito o no disponible.
+func condicionAcceso(result *goquery.Selection) string {
+	var condicion string
+	result.Find("[data-cy='price-recipe']").First().Find("span").
+		EachWithBreak(func(i int, s *goquery.Selection) bool {
+			texto := strings.Join(strings.Fields(s.Text()), " ")
+			minusculas := strings.ToLower(texto)
+			if len(texto) < 90 &&
+				(strings.Contains(minusculas, "audible") ||
+					strings.Contains(minusculas, "kindle unlimited")) {
+				condicion = texto
+				return false
+			}
+			return true
+		})
+	return condicion
+}
+
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
 // ruta relativa y otras una URL absoluta. La plantilla concatenaba el dominio
 // sin comprobarlo, lo que en el segundo caso producia enlaces del tipo
@@ -630,8 +721,41 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 			}
 		}
 
-		price := result.Find("span.a-price > span.a-offscreen").First().Text()
-		type_ := result.Find("a.a-size-base.a-link-normal.s-underline-text.s-underline-link-text.s-link-style.a-text-bold").Text()
+		// De entre los formatos disponibles se muestra el mas barato de pago,
+		// indicando a cual corresponde. Si el unico importe es cero se muestra
+		// igualmente, acompanado del precio tachado y de la condicion de
+		// acceso, para que quede claro que no es un producto gratuito.
+		price := ""
+		type_ := ""
+		pares := formatosYPrecios(result)
+		mejor := -1
+		primerCero := -1
+		for j, p := range pares {
+			valor, ok := importePrecio(p.Precio)
+			if !ok {
+				continue
+			}
+			if valor <= 0 {
+				if primerCero < 0 {
+					primerCero = j
+				}
+				continue
+			}
+			if mejor < 0 {
+				mejor = j
+				continue
+			}
+			if anterior, _ := importePrecio(pares[mejor].Precio); valor < anterior {
+				mejor = j
+			}
+		}
+		if mejor < 0 {
+			mejor = primerCero
+		}
+		if mejor >= 0 {
+			price = pares[mejor].Precio
+			type_ = pares[mejor].Formato
+		}
 
 		imagenSrc, _ := result.Find("img.s-image").First().Attr("src")
 		image := rutaProxyImagen(imagenSrc)
@@ -668,6 +792,8 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 			res.Title = title
 			res.URL = link
 			res.Price = price
+			res.PrecioTachado = precioTachado(result)
+			res.Condicion = condicionAcceso(result)
 			res.ImageURL = image
 			res.Type = type_
 			res.Reviews = reviews

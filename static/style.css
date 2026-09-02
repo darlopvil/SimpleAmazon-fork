@@ -123,3 +123,15 @@ select:focus {
         color: #ff6b6b;
     }
 }
+
+.precioTachado {
+    text-decoration: line-through;
+    color: #888;
+    font-size: 0.9rem;
+    margin-left: 6px;
+}
+
+.condicion {
+    color: #888;
+    font-size: 0.9rem;
+}
