@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -242,6 +243,41 @@ func esBloqueo(cuerpo []byte) bool {
 		}
 	}
 	return false
+}
+
+// Servicio de inspeccion usado por el modo diagnostico para averiguar con que
+// huella TLS y HTTP/2 se presenta el cliente ante un servidor.
+const urlHuella = "https://tls.peet.ws/api/clean"
+
+// Consulta y muestra la huella del cliente del programa. Amazon esta detras de
+// un servicio antibot que puntua la huella de la conexion, no solo las
+// cabeceras, asi que hace falta poder medirla para compararla con la de un
+// navegador real y verificar el efecto de cualquier cambio en el transporte.
+func imprimirHuella() {
+	ctx, cancelar := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelar()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", urlHuella, nil)
+	if err != nil {
+		fmt.Println("no se pudo preparar la peticion:", err)
+		os.Exit(1)
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := clienteHTTP.Do(req)
+	if err != nil {
+		fmt.Println("no se pudo consultar la huella:", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	cuerpo, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		fmt.Println("no se pudo leer la respuesta:", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("protocolo negociado: %s\nuser-agent enviado: %s\n\n%s\n", resp.Proto, userAgent, cuerpo)
 }
 
 // Cliente compartido para todas las peticiones salientes. El cliente por
@@ -767,7 +803,13 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 func main() {
 	port := flag.Int("p", 8080, "Port")
 	host := flag.String("h", "localhost", "Host")
+	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
 	flag.Parse()
+
+	if *huella {
+		imprimirHuella()
+		return
+	}
 
 	fmt.Printf("Serving on %s:%d\n", *host, *port)
 	// Se usa un multiplexor propio en lugar del global por defecto, para que
