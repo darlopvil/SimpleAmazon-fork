@@ -277,6 +277,12 @@ func imprimirHuella() {
 // las extensiones TLS.
 var sesionNavegador *azuretls.Session
 
+// Huella medida de un curl que atraviesa el servicio antibot desde la misma
+// maquina y en el mismo momento en que la aplicacion es rechazada. Sirve para
+// comprobar si el criterio de bloqueo es la huella o alguna otra senal.
+const ja3Curl = "771,4866-4867-4865-49196-49200-159-52393-52392-52394-49195-49199-158-49188-49192-107-49187-49191-103-49162-49172-57-49161-49171-51-157-156-61-60-53-47,65281-0-11-10-16-22-23-49-13-43-45-51-27,4588-29-23-30-24-25-256-257,0-1-2"
+const akamaiCurl = "3:100,4:65536,2:0|1048510465|0|m,s,a,p"
+
 // Respuesta minima comun a los dos clientes. Cada uno usa tipos incompatibles
 // entre si, de modo que las peticiones salientes pasan por esta capa en lugar
 // de manejar directamente uno u otro.
@@ -865,16 +871,34 @@ func main() {
 	port := flag.Int("p", 8080, "Port")
 	host := flag.String("h", "localhost", "Host")
 	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
-	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go o navegador")
+	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go, navegador o curl")
 	flag.Parse()
 
 	// El cliente estandar sigue siendo el predeterminado. El perfil de
 	// navegador se activa de forma explicita, de modo que se puede volver al
 	// comportamiento anterior sin recompilar.
-	if *perfil == "navegador" {
+	switch *perfil {
+	case "navegador":
 		sesionNavegador = azuretls.NewSession()
 		sesionNavegador.Browser = azuretls.Firefox
 		fmt.Println("huella: imitando navegador (TLS y HTTP/2)")
+
+	case "curl":
+		// Perfil medido de un curl que si atraviesa el servicio antibot desde
+		// esta misma maquina. No se parece a ningun navegador, de modo que si
+		// funciona quedara descartado que el criterio sea parecerse a uno.
+		// El separador de los ajustes es una coma y no el punto y coma que usan
+		// las herramientas de inspeccion de huella.
+		sesionNavegador = azuretls.NewSession()
+		if err := sesionNavegador.ApplyJa3(ja3Curl, azuretls.Firefox); err != nil {
+			fmt.Println("no se pudo aplicar el JA3:", err)
+			os.Exit(1)
+		}
+		if err := sesionNavegador.ApplyHTTP2(akamaiCurl); err != nil {
+			fmt.Println("no se pudo aplicar la huella HTTP/2:", err)
+			os.Exit(1)
+		}
+		fmt.Println("huella: imitando curl (TLS y HTTP/2)")
 	}
 
 	if *huella {
