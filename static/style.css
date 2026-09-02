@@ -112,3 +112,14 @@ select:focus {
     }
 }
 
+
+.mensajeError {
+    color: #b00020;
+    font-weight: bold;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+    .mensajeError {
+        color: #ff6b6b;
+    }
+}
