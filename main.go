@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -354,6 +355,16 @@ func obtener(ctx context.Context, destino string, cabeceras [][2]string, limite 
 		Cabecera: res.Header.Get,
 		Cuerpo:   cuerpo,
 	}, nil
+}
+
+// Valor de una variable de entorno, o el valor por defecto si no está definida.
+// El programa admite configuración por entorno además de por flags, porque en un
+// contenedor lo habitual es lo primero.
+func entorno(nombre string, porDefecto string) string {
+	if v, ok := os.LookupEnv(nombre); ok && v != "" {
+		return v
+	}
+	return porDefecto
 }
 
 // Cliente compartido para todas las peticiones salientes. El cliente por
@@ -1020,8 +1031,16 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	port := flag.Int("p", 8080, "Port")
-	host := flag.String("h", "localhost", "Host")
+	// El valor por defecto del host es 0.0.0.0 y no localhost. Dentro de un
+	// contenedor, localhost bindea al bucle interno y deja el proceso
+	// inalcanzable desde fuera aunque el puerto esté publicado.
+	puertoPorDefecto, err := strconv.Atoi(entorno("SIMPLEAMAZON_PORT", "8080"))
+	if err != nil {
+		log.Fatalf("SIMPLEAMAZON_PORT no es un número válido: %v", err)
+	}
+
+	port := flag.Int("p", puertoPorDefecto, "Puerto de escucha")
+	host := flag.String("h", entorno("SIMPLEAMAZON_HOST", "0.0.0.0"), "Dirección de escucha")
 	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
 	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go, navegador o curl")
 	volcado := flag.Bool("volcado", false, "Imprime por consola las peticiones salientes y sus respuestas")
@@ -1128,5 +1147,8 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	fmt.Println(srv.ListenAndServe())
+	// El error de arranque se trataba con Println, de modo que un fallo al
+	// enlazar el puerto se imprimía y el proceso terminaba con código cero, lo
+	// que un supervisor interpreta como una salida limpia.
+	log.Fatal(srv.ListenAndServe())
 }

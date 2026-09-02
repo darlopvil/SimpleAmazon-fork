@@ -29,7 +29,6 @@ COPY --from=build /simpleamazon /simpleamazon
 USER 65534:65534
 EXPOSE 8080
 
-# El valor por defecto del flag -h es localhost, que en un contenedor
-# bindea al loopback interno y deja el proceso inalcanzable desde fuera.
+# El binario escucha en 0.0.0.0:8080 por defecto. Se puede ajustar con las
+# variables SIMPLEAMAZON_HOST y SIMPLEAMAZON_PORT, o con los flags -h y -p.
 ENTRYPOINT ["/simpleamazon"]
-CMD ["-h", "0.0.0.0", "-p", "8080"]

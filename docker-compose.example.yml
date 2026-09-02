@@ -9,9 +9,9 @@ services:
     image: simpleamazon:local
     container_name: simpleamazon_app
     restart: unless-stopped
-    # El valor por defecto del flag -h es localhost, que dentro de un
-    # contenedor bindea al loopback interno y lo deja inalcanzable.
-    command: ["-h", "0.0.0.0", "-p", "8080"]
+    # environment:
+    #   SIMPLEAMAZON_HOST: "0.0.0.0"
+    #   SIMPLEAMAZON_PORT: "8080"
     mem_limit: 128m
     # ports:
     #   - "127.0.0.1:8080:8080"
