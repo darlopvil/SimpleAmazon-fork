@@ -900,16 +900,42 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// save a cookie containing sorting and TLD (YAY! Session Management)
-	http.SetCookie(w, &http.Cookie{
-		Name:  "SortingCookie",
-		Value: sort,
-	})
+	// El TLD se comprueba también aquí, y no solo en search, para no llegar a
+	// almacenar en una cookie un valor que después será rechazado.
+	if !tldsPermitidos[tld] {
+		http.Error(w, "TLD no permitido", http.StatusBadRequest)
+		return
+	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:  "TLDCookie",
-		Value: tld,
-	})
+	// Se recuerdan el dominio y el criterio de ordenación elegidos. Ambos
+	// valores están ya validados contra sus listas cerradas en este punto.
+	//
+	// Antes se guardaban sin ningún atributo: sin Path, de modo que el ámbito
+	// dependía de la ruta de la petición; sin HttpOnly, accesibles desde
+	// cualquier script de la página; sin SameSite, enviadas en peticiones de
+	// terceros; y sin Max-Age, con lo que la preferencia se perdía al cerrar el
+	// navegador, justo lo contrario de lo que la funcionalidad pretende.
+	//
+	// Secure se activa solo cuando la conexión del usuario es cifrada. La
+	// aplicación suele ejecutarse detrás de un proxy inverso que termina el
+	// TLS y reenvía en claro, de modo que se consulta también la cabecera que
+	// ese proxy añade.
+	segura := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+
+	guardarPreferencia := func(nombre, valor string) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     nombre,
+			Value:    valor,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   segura,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   60 * 60 * 24 * 365,
+		})
+	}
+
+	guardarPreferencia("SortingCookie", sort)
+	guardarPreferencia("TLDCookie", tld)
 
 	// get the result
 
