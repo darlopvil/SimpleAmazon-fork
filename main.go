@@ -872,6 +872,7 @@ func main() {
 	host := flag.String("h", "localhost", "Host")
 	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
 	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go, navegador o curl")
+	volcado := flag.Bool("volcado", false, "Imprime por consola las peticiones salientes y sus respuestas")
 	flag.Parse()
 
 	// El cliente estandar sigue siendo el predeterminado. El perfil de
@@ -899,6 +900,15 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("huella: imitando curl (TLS y HTTP/2)")
+	}
+
+	// El volcado imprime por consola la peticion saliente completa, con sus
+	// cabeceras y el orden en que se envian, y la respuesta recibida. Sirve
+	// para comparar lo que el programa envia de verdad con lo que envia un
+	// cliente que si atraviesa el servicio antibot, en lugar de deducirlo.
+	if *volcado && sesionNavegador != nil {
+		sesionNavegador.Log()
+		fmt.Println("volcado de peticiones activado")
 	}
 
 	if *huella {
