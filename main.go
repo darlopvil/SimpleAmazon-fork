@@ -140,6 +140,7 @@ var (
 	plantillaUnhandled  = cargarPlantilla("unhandled.html")
 	plantillaResultados = cargarPlantilla("searchResults.html")
 	plantillaError      = cargarPlantilla("error.html")
+	plantillaProducto   = cargarPlantilla("product.html")
 )
 
 // User-Agent de una version reciente de Firefox. El valor anterior correspondia
@@ -190,6 +191,50 @@ func claveCache(tld string, searchTerm string, page int, sort string) string {
 	// El separador nulo evita que combinaciones distintas produzcan la misma
 	// clave al concatenarse.
 	return tld + "\x00" + searchTerm + "\x00" + strconv.Itoa(page) + "\x00" + sort
+}
+
+// Caché de fichas de producto. Comparte el mismo límite y la misma expiración
+// que la de búsquedas, pero necesita su propio almacén porque el tipo guardado
+// es distinto.
+type entradaProducto struct {
+	ficha  Producto
+	expira time.Time
+}
+
+var (
+	cacheProductoMu sync.Mutex
+	almacenProducto = map[string]entradaProducto{}
+)
+
+func cacheProducto(clave string) (Producto, bool) {
+	cacheProductoMu.Lock()
+	defer cacheProductoMu.Unlock()
+	e, ok := almacenProducto[clave]
+	if !ok {
+		return Producto{}, false
+	}
+	if time.Now().After(e.expira) {
+		delete(almacenProducto, clave)
+		return Producto{}, false
+	}
+	return e.ficha, true
+}
+
+func cacheSetProducto(clave string, ficha Producto) {
+	cacheProductoMu.Lock()
+	defer cacheProductoMu.Unlock()
+	if len(almacenProducto) >= maxEntradasCache {
+		ahora := time.Now()
+		for k, e := range almacenProducto {
+			if ahora.After(e.expira) {
+				delete(almacenProducto, k)
+			}
+		}
+		if len(almacenProducto) >= maxEntradasCache {
+			almacenProducto = map[string]entradaProducto{}
+		}
+	}
+	almacenProducto[clave] = entradaProducto{ficha: ficha, expira: time.Now().Add(ttlCache)}
 }
 
 func cacheGet(clave string) (SearchResults, bool) {
@@ -516,6 +561,124 @@ func condicionAcceso(result *goquery.Selection) string {
 	return condicion
 }
 
+// Longitud del identificador de producto de Amazon. Comprobado sobre 127
+// identificadores de dos categorías distintas: todos miden lo mismo.
+const longitudASIN = 10
+
+// Comprueba que el identificador tiene el formato que usa Amazon: diez
+// caracteres alfanuméricos en mayúsculas. Los libros terminan a veces en X,
+// porque su identificador es un ISBN de diez dígitos.
+func asinValido(asin string) bool {
+	if len(asin) != longitudASIN {
+		return false
+	}
+	for _, r := range asin {
+		if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// Extrae el identificador de producto de una URL de Amazon, si lo lleva. Las
+// fichas siguen el patrón /dp/{asin}, a veces precedido del nombre del producto.
+func asinDeURL(enlace string) string {
+	i := strings.Index(enlace, "/dp/")
+	if i < 0 {
+		return ""
+	}
+	resto := enlace[i+len("/dp/"):]
+	if j := strings.IndexAny(resto, "/?#"); j >= 0 {
+		resto = resto[:j]
+	}
+	if !asinValido(resto) {
+		return ""
+	}
+	return resto
+}
+
+// Ficha de un producto.
+type Producto struct {
+	Idioma string
+	Estado int
+	ASIN   string
+	TLD    string
+	// El formulario de búsqueda es común a todas las páginas y necesita estos
+	// dos campos, aunque en una ficha de producto vayan siempre vacíos.
+	Sort          string
+	Query         string
+	Titulo        string
+	Imagen        string
+	Precio        string
+	PrecioTachado string
+	Descuento     string
+	Valoracion    string
+	Resenas       string
+	Disponible    string
+	Descripcion   []string
+	URLAmazon     string
+	Error         string
+}
+
+// Compone el importe a partir de sus partes. En la ficha de producto el span
+// a-offscreen llega vacío, al contrario que en la página de resultados, y el
+// importe está repartido entre la parte entera, la fracción y el símbolo.
+func precioCompuesto(sel *goquery.Selection) string {
+	entero := strings.TrimSpace(sel.Find("span.a-price-whole").First().Text())
+	fraccion := strings.TrimSpace(sel.Find("span.a-price-fraction").First().Text())
+	simbolo := strings.TrimSpace(sel.Find("span.a-price-symbol").First().Text())
+	if entero == "" {
+		return ""
+	}
+	// La parte entera arrastra el separador decimal, que viene en un span
+	// anidado dentro de ella.
+	separador := ","
+	if strings.Contains(entero, ".") {
+		separador = "."
+	}
+	entero = strings.TrimRight(entero, ",.")
+	if fraccion == "" {
+		return strings.TrimSpace(entero + " " + simbolo)
+	}
+	return strings.TrimSpace(entero + separador + fraccion + " " + simbolo)
+}
+
+// Descripción del producto. Amazon la publica en contenedores distintos según
+// la categoría: los artículos corrientes usan una lista de características y
+// los libros una reseña editorial.
+func descripcionProducto(doc *goquery.Document) []string {
+	var lineas []string
+
+	doc.Find("#feature-bullets li span.a-list-item").Each(func(i int, s *goquery.Selection) {
+		if t := strings.Join(strings.Fields(s.Text()), " "); t != "" {
+			lineas = append(lineas, t)
+		}
+	})
+	if len(lineas) > 0 {
+		return lineas
+	}
+
+	// En las fichas editoriales cada párrafo lleva un span dentro, de modo que
+	// buscar ambos devolvía el mismo texto dos veces. Se recorren solo los
+	// párrafos y se descartan los repetidos, porque Amazon publica la misma
+	// reseña en más de un contenedor.
+	vistas := map[string]bool{}
+	for _, contenedor := range []string{"#bookDescription_feature_div", "#productDescription"} {
+		doc.Find(contenedor).First().Find("p").Each(func(i int, s *goquery.Selection) {
+			t := strings.Join(strings.Fields(s.Text()), " ")
+			if len(t) > 40 && !vistas[t] {
+				vistas[t] = true
+				lineas = append(lineas, t)
+			}
+		})
+		if len(lineas) > 0 {
+			return lineas
+		}
+	}
+	return lineas
+}
+
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
 // ruta relativa y otras una URL absoluta. La plantilla concatenaba el dominio
 // sin comprobarlo, lo que en el segundo caso producia enlaces del tipo
@@ -791,9 +954,15 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 		limitedSupplyEl := result.Find("div.sg-col-inner > div.a-section.a-spacing-none.a-spacing-top-micro > div").Last()
 		limitedSupply := limitedSupplyEl.Find("span.a-size-base.a-color-price").Text()
 
-		// La URL se deja construida aqui, no en la plantilla, para que esta no
-		// tenga que saber si el enlace venia relativo o absoluto.
+		// La URL se deja construida aquí, no en la plantilla, para que esta no
+		// tenga que saber si el enlace venía relativo o absoluto.
 		link = urlAbsoluta(tld, link)
+
+		// Si el enlace apunta a una ficha de producto, se reescribe hacia la
+		// del propio frontend para no enviar al usuario a Amazon.
+		if asin := asinDeURL(link); asin != "" {
+			link = "/dp/" + asin + "?tld=" + tld
+		}
 
 		// Sin enlace no hay resultado que ofrecer: antes se emitia un enlace a
 		// la portada de Amazon, que no lleva al producto.
@@ -822,6 +991,96 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	cacheSet(clave, resultsElement)
 
 	return resultsElement
+}
+
+// Obtiene la ficha de un producto. Reutiliza el cliente saliente, la detección
+// de bloqueo y la caché de la búsqueda; solo cambia lo que se extrae.
+func producto(ctx context.Context, tld string, asin string) Producto {
+	var ficha Producto
+	ficha.ASIN = asin
+	ficha.TLD = tld
+	ficha.Idioma = idiomaHTML(tld)
+
+	if !tldsPermitidos[tld] {
+		ficha.Error = "TLD no permitido"
+		ficha.Estado = http.StatusBadRequest
+		return ficha
+	}
+	if !asinValido(asin) {
+		ficha.Error = "Identificador de producto no válido"
+		ficha.Estado = http.StatusBadRequest
+		return ficha
+	}
+
+	ficha.URLAmazon = "https://www.amazon." + tld + "/dp/" + asin
+
+	clave := claveCache(tld, "dp:"+asin, 0, "")
+	if cacheado, ok := cacheProducto(clave); ok {
+		return cacheado
+	}
+
+	cabeceras := [][2]string{
+		{"User-Agent", userAgent},
+		{"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"},
+		{"Upgrade-Insecure-Requests", "1"},
+	}
+	if idioma, ok := idiomaPorTLD[tld]; ok {
+		cabeceras = append(cabeceras, [2]string{"Accept-Language", idioma})
+	}
+
+	res, err := obtener(ctx, ficha.URLAmazon, cabeceras, maxCuerpo)
+	if err != nil {
+		fmt.Println("fallo al contactar con Amazon:", err)
+		ficha.Error = "No se pudo contactar con Amazon"
+		ficha.Estado = http.StatusBadGateway
+		return ficha
+	}
+	if res.Estado != 200 {
+		fmt.Println("Amazon respondió con estado:", res.Estado)
+		ficha.Error = "Amazon ha respondido con un error"
+		ficha.Estado = http.StatusBadGateway
+		return ficha
+	}
+	if esBloqueo(res.Cuerpo) {
+		fmt.Printf("bloqueo antibot: tld=%s asin=%s protocolo=%s bytes=%d server=%q\n",
+			tld, asin, res.Proto, len(res.Cuerpo), res.Cabecera("Server"))
+		ficha.Error = "Amazon ha respondido con una verificación antibot en lugar del producto. Inténtalo de nuevo en unos minutos."
+		ficha.Estado = http.StatusServiceUnavailable
+		return ficha
+	}
+
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res.Cuerpo))
+	if err != nil {
+		fmt.Println("fallo al parsear el HTML de Amazon:", err)
+		ficha.Error = "No se pudo interpretar la respuesta de Amazon"
+		ficha.Estado = http.StatusBadGateway
+		return ficha
+	}
+
+	ficha.Titulo = strings.Join(strings.Fields(doc.Find("#productTitle").First().Text()), " ")
+	if ficha.Titulo == "" {
+		ficha.Error = "No se encontró el producto"
+		ficha.Estado = http.StatusNotFound
+		return ficha
+	}
+
+	if src, ok := doc.Find("#landingImage").First().Attr("src"); ok {
+		ficha.Imagen = rutaProxyImagen(src)
+	}
+
+	ficha.Precio = precioCompuesto(doc.Find("span.priceToPay").First())
+	ficha.PrecioTachado = strings.TrimSpace(
+		doc.Find("span.apex-basisprice-offscreen-label").First().Text())
+	ficha.Descuento = strings.TrimSpace(doc.Find("span.savingsPercentage").First().Text())
+
+	ficha.Valoracion, _ = doc.Find("#acrPopover").First().Attr("title")
+	ficha.Resenas, _ = doc.Find("#acrCustomerReviewText").First().Attr("aria-label")
+	ficha.Disponible = strings.Join(strings.Fields(
+		doc.Find("#availability span").First().Text()), " ")
+	ficha.Descripcion = descripcionProducto(doc)
+
+	cacheSetProducto(clave, ficha)
+	return ficha
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -971,6 +1230,45 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	if err := plantillaResultados.ExecuteTemplate(w, "base.html", result); err != nil {
 		// La cabecera ya se envio, de modo que solo cabe dejar constancia.
 		fmt.Println("error al renderizar los resultados:", err)
+	}
+}
+
+// Sirve la ficha de un producto en la ruta /dp/{asin}.
+func handleProducto(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "Solo se admite el método GET", http.StatusMethodNotAllowed)
+		return
+	}
+
+	asin := strings.Trim(strings.TrimPrefix(r.URL.Path, "/dp/"), "/")
+
+	// El dominio se toma de la preferencia guardada y puede sobreescribirse
+	// por parámetro, que es lo que hacen los enlaces de los resultados.
+	tld := "com"
+	if c, err := r.Cookie("TLDCookie"); err == nil && tldsPermitidos[c.Value] {
+		tld = c.Value
+	}
+	if v := r.URL.Query().Get("tld"); v != "" {
+		tld = v
+	}
+
+	ficha := producto(r.Context(), tld, asin)
+
+	if ficha.Error != "" {
+		estado := ficha.Estado
+		if estado == 0 {
+			estado = http.StatusBadGateway
+		}
+		w.WriteHeader(estado)
+		if err := plantillaError.ExecuteTemplate(w, "base.html", ficha); err != nil {
+			fmt.Println("error al renderizar la página de error:", err)
+		}
+		return
+	}
+
+	if err := plantillaProducto.ExecuteTemplate(w, "base.html", ficha); err != nil {
+		fmt.Println("error al renderizar el producto:", err)
 	}
 }
 
@@ -1149,6 +1447,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/s", handleSearch)
+	mux.HandleFunc("/dp/", handleProducto)
 	mux.HandleFunc("/mediaproxy/", proxyMedia)
 
 	mux.Handle("/static/", http.FileServer(http.FS(staticFiles)))

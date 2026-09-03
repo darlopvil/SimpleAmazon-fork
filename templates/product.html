@@ -1,0 +1,37 @@
+{{ define "contenido" }}
+            <hr>
+            <div class="fichaProducto">
+                <p><a class="verEnAmazon" href="{{ .URLAmazon }}" target="_blank" rel="noreferrer noopener">View on Amazon</a></p>
+
+                <h3 class="tituloProducto">{{ .Titulo }}</h3>
+
+                {{ if .Imagen }}
+                    <p><img class="imagenProducto" src="{{ .Imagen }}" alt="{{ .Titulo }}"></p>
+                {{ end }}
+
+                {{ if .Valoracion }}
+                    <p>{{ .Valoracion }}{{ if .Resenas }} | {{ .Resenas }}{{ end }}</p>
+                {{ end }}
+
+                {{ if .Precio }}
+                    <p>
+                        <span class="price">{{ .Precio }}</span>
+                        {{ if .PrecioTachado }}<span class="precioTachado">{{ .PrecioTachado }}</span>{{ end }}
+                        {{ if .Descuento }}<span class="descuento">{{ .Descuento }}</span>{{ end }}
+                    </p>
+                {{ else }}
+                    <p><span>Precio no disponible</span></p>
+                {{ end }}
+
+                {{ if .Disponible }}
+                    <p class="disponibilidad">{{ .Disponible }}</p>
+                {{ end }}
+
+                {{ if .Descripcion }}
+                    <h4>Acerca de este producto</h4>
+                    <ul class="descripcion">
+                        {{ range .Descripcion }}<li>{{ . }}</li>{{ end }}
+                    </ul>
+                {{ end }}
+            </div>
+{{ end }}

@@ -149,3 +149,37 @@ select:focus {
     color: #888;
     font-size: 0.85rem;
 }
+
+.fichaProducto {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.tituloProducto {
+    font-size: 1.3rem;
+}
+
+.imagenProducto {
+    width: auto;
+    max-width: 320px;
+    max-height: 320px;
+}
+
+.verEnAmazon {
+    font-weight: bold;
+}
+
+.descuento {
+    color: #b12704;
+    font-weight: bold;
+    margin-left: 6px;
+}
+
+.disponibilidad {
+    font-weight: bold;
+}
+
+.descripcion {
+    text-align: left;
+}
