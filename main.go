@@ -1125,6 +1125,22 @@ func main() {
 		}
 	})
 
+	// Los navegadores piden /favicon.ico por convención, sin leer el head, así
+	// que la ruta se registra además de referenciarlo desde la plantilla. El
+	// icono no cambia, de modo que se sirve con una validez larga.
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		icono, err := staticFiles.ReadFile("static/favicon.ico")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		if _, err := w.Write(icono); err != nil {
+			fmt.Println("error al servir el favicon:", err)
+		}
+	})
+
 	// Sin robots.txt, los buscadores pueden indexar la instancia, y cada visita
 	// indexada se traduce en trafico saliente hacia Amazon que no controlamos.
 	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
