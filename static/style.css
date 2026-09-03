@@ -144,3 +144,8 @@ select:focus {
 .tituloInicio:hover {
     text-decoration: underline;
 }
+
+.creditos {
+    color: #888;
+    font-size: 0.85rem;
+}
