@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -598,6 +600,120 @@ func asinDeURL(enlace string) string {
 	return resto
 }
 
+// Imagen de la galería, con la versión grande y la miniatura, ambas servidas a
+// través del proxy.
+type Imagen struct {
+	Grande string
+	Mini   string
+	Alt    string
+}
+
+// Par etiqueta/valor de la ficha técnica.
+type Especificacion struct {
+	Etiqueta string
+	Valor    string
+}
+
+// Amazon incrusta la galería completa como JSON dentro de un script, con todas
+// las resoluciones de cada imagen. Es más fiable que recorrer las miniaturas
+// del documento.
+var reGaleria = regexp.MustCompile(`'colorImages'\s*:\s*\{\s*'initial'\s*:\s*A\.\$\.parseJSON\('(.*?)'\)`)
+
+func galeria(cuerpo []byte) []Imagen {
+	m := reGaleria.FindSubmatch(cuerpo)
+	if m == nil {
+		return nil
+	}
+
+	// El JSON viaja dentro de una cadena de JavaScript, con las secuencias de
+	// escape sin resolver.
+	crudo, err := strconv.Unquote(`"` + strings.ReplaceAll(string(m[1]), `"`, `\"`) + `"`)
+	if err != nil {
+		return nil
+	}
+
+	var entradas []struct {
+		HiRes   string `json:"hiRes"`
+		Large   string `json:"large"`
+		Thumb   string `json:"thumb"`
+		AltText string `json:"altText"`
+	}
+	if err := json.Unmarshal([]byte(crudo), &entradas); err != nil {
+		return nil
+	}
+
+	var imagenes []Imagen
+	for _, e := range entradas {
+		grande := e.Large
+		if grande == "" {
+			grande = e.HiRes
+		}
+		ruta := rutaProxyImagen(grande)
+		if ruta == "" {
+			continue
+		}
+		imagenes = append(imagenes, Imagen{
+			Grande: ruta,
+			Mini:   rutaProxyImagen(e.Thumb),
+			Alt:    e.AltText,
+		})
+	}
+	return imagenes
+}
+
+// Limpia las marcas invisibles de dirección de texto y los separadores que
+// Amazon intercala en las etiquetas de la ficha técnica.
+func limpiarEtiqueta(t string) string {
+	t = strings.Map(func(r rune) rune {
+		if r == '\u200e' || r == '\u200f' {
+			return -1
+		}
+		return r
+	}, t)
+	t = strings.Join(strings.Fields(t), " ")
+	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(t), ":"))
+}
+
+// Ficha técnica del producto. Amazon la publica en dos bloques con estructuras
+// distintas: una tabla de resumen y una lista de detalles.
+func especificaciones(doc *goquery.Document) []Especificacion {
+	var specs []Especificacion
+	vistas := map[string]bool{}
+
+	// Amazon repite en la ficha técnica datos que ya se muestran por separado,
+	// y alguno llega mal formateado. Se descartan por nombre.
+	descartadas := map[string]bool{
+		"Opiniones de los clientes": true,
+		"Customer Reviews":          true,
+	}
+
+	anadir := func(etiqueta, valor string) {
+		etiqueta = limpiarEtiqueta(etiqueta)
+		valor = strings.Join(strings.Fields(valor), " ")
+		if etiqueta == "" || valor == "" || vistas[etiqueta] || descartadas[etiqueta] {
+			return
+		}
+		vistas[etiqueta] = true
+		specs = append(specs, Especificacion{Etiqueta: etiqueta, Valor: valor})
+	}
+
+	doc.Find("#productOverview_feature_div tr").Each(func(i int, tr *goquery.Selection) {
+		celdas := tr.Find("td")
+		if celdas.Length() >= 2 {
+			anadir(celdas.Eq(0).Text(), celdas.Eq(1).Text())
+		}
+	})
+
+	doc.Find("#detailBullets_feature_div li span.a-list-item").Each(func(i int, li *goquery.Selection) {
+		spans := li.Find("span")
+		if spans.Length() >= 2 {
+			anadir(spans.Eq(0).Text(), spans.Eq(1).Text())
+		}
+	})
+
+	return specs
+}
+
 // Ficha de un producto.
 type Producto struct {
 	Idioma string
@@ -617,6 +733,8 @@ type Producto struct {
 	Resenas       string
 	Disponible    string
 	Descripcion   []string
+	Galeria       []Imagen
+	Especs        []Especificacion
 	URLAmazon     string
 	Error         string
 }
@@ -1078,6 +1196,8 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	ficha.Disponible = strings.Join(strings.Fields(
 		doc.Find("#availability span").First().Text()), " ")
 	ficha.Descripcion = descripcionProducto(doc)
+	ficha.Galeria = galeria(res.Cuerpo)
+	ficha.Especs = especificaciones(doc)
 
 	cacheSetProducto(clave, ficha)
 	return ficha

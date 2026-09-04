@@ -151,7 +151,7 @@ select:focus {
 }
 
 .fichaProducto {
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
     text-align: left;
 }
@@ -182,4 +182,88 @@ select:focus {
 
 .descripcion {
     text-align: left;
+}
+
+/* Dos columnas en pantalla ancha y apiladas en estrecha, sin media queries:
+   flex-wrap se encarga en cuanto la columna de datos no cabe. */
+.columnas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.columnaImagen {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.columnaDatos {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+/* Tira con desplazamiento horizontal. Sin JavaScript se arrastra a mano; con
+   el, las flechas saltan de una imagen a la siguiente.
+   No se usa scroll-snap: reajusta la posicion despues de cada desplazamiento
+   del script y hace que los saltos queden irregulares. */
+.galeria {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.galeriaItem {
+    flex: 0 0 auto;
+}
+
+.galeria img {
+    width: auto;
+    max-width: 300px;
+    max-height: 300px;
+    padding: 0;
+}
+
+.galeriaAviso {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.especs {
+    border-collapse: collapse;
+    margin: 0;
+    width: 100%;
+    font-size: 0.95rem;
+}
+
+.especs th,
+.especs td {
+    text-align: left;
+    vertical-align: top;
+    padding: 3px 10px 3px 0;
+}
+
+.especs th {
+    font-weight: bold;
+    /* Se ajusta al contenido y solo se parte si de verdad no cabe. */
+    white-space: normal;
+    width: 1%;
+}
+
+.especs tr {
+    border: none;
+}
+
+.galeriaControles {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.galeriaFlecha {
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 2px 12px;
+    cursor: pointer;
 }

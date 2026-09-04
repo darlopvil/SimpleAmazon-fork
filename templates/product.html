@@ -5,27 +5,53 @@
 
                 <h3 class="tituloProducto">{{ .Titulo }}</h3>
 
-                {{ if .Imagen }}
-                    <p><img class="imagenProducto" src="{{ .Imagen }}" alt="{{ .Titulo }}"></p>
-                {{ end }}
+                <div class="columnas">
+                    <div class="columnaImagen">
+                        {{ if .Galeria }}
+                            <div class="galeria">
+                                {{ range .Galeria }}
+                                    <a class="galeriaItem" href="{{ .Grande }}" target="_blank" rel="noopener">
+                                        <img src="{{ .Grande }}" alt="{{ .Alt }}" loading="lazy">
+                                    </a>
+                                {{ end }}
+                            </div>
+                            {{ if gt (len .Galeria) 1 }}
+                                <p class="galeriaAviso">{{ len .Galeria }} imágenes — desplaza para ver más</p>
+                                <script src="/static/gallery.js" defer></script>
+                            {{ end }}
+                        {{ else if .Imagen }}
+                            <p><img class="imagenProducto" src="{{ .Imagen }}" alt="{{ .Titulo }}"></p>
+                        {{ end }}
+                    </div>
 
-                {{ if .Valoracion }}
-                    <p>{{ .Valoracion }}{{ if .Resenas }} | {{ .Resenas }}{{ end }}</p>
-                {{ end }}
+                    <div class="columnaDatos">
+                        {{ if .Valoracion }}
+                            <p>{{ .Valoracion }}{{ if .Resenas }} | {{ .Resenas }}{{ end }}</p>
+                        {{ end }}
 
-                {{ if .Precio }}
-                    <p>
-                        <span class="price">{{ .Precio }}</span>
-                        {{ if .PrecioTachado }}<span class="precioTachado">{{ .PrecioTachado }}</span>{{ end }}
-                        {{ if .Descuento }}<span class="descuento">{{ .Descuento }}</span>{{ end }}
-                    </p>
-                {{ else }}
-                    <p><span>Precio no disponible</span></p>
-                {{ end }}
+                        {{ if .Precio }}
+                            <p>
+                                <span class="price">{{ .Precio }}</span>
+                                {{ if .PrecioTachado }}<span class="precioTachado">{{ .PrecioTachado }}</span>{{ end }}
+                                {{ if .Descuento }}<span class="descuento">{{ .Descuento }}</span>{{ end }}
+                            </p>
+                        {{ else }}
+                            <p><span>Precio no disponible</span></p>
+                        {{ end }}
 
-                {{ if .Disponible }}
-                    <p class="disponibilidad">{{ .Disponible }}</p>
-                {{ end }}
+                        {{ if .Disponible }}
+                            <p class="disponibilidad">{{ .Disponible }}</p>
+                        {{ end }}
+
+                        {{ if .Especs }}
+                            <table class="especs">
+                                {{ range .Especs }}
+                                    <tr><th>{{ .Etiqueta }}</th><td>{{ .Valor }}</td></tr>
+                                {{ end }}
+                            </table>
+                        {{ end }}
+                    </div>
+                </div>
 
                 {{ if .Descripcion }}
                     <h4>Acerca de este producto</h4>
