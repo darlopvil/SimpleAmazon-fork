@@ -184,23 +184,21 @@ select:focus {
     text-align: left;
 }
 
-/* Dos columnas en pantalla ancha y apiladas en estrecha, sin media queries:
-   flex-wrap se encarga en cuanto la columna de datos no cabe. */
-.columnas {
+/* Linea unica con valoracion, resenas, precio y disponibilidad. flex-wrap la
+   apila sola en pantalla estrecha, sin consultas de medios. Los elementos se
+   alinean por la linea base porque el precio va a mayor tamano que el resto. */
+.resumen {
     display: flex;
     flex-wrap: wrap;
-    gap: 20px;
-    align-items: flex-start;
+    align-items: baseline;
+    gap: 4px 14px;
+    margin: 0 0 14px;
 }
 
-.columnaImagen {
-    flex: 1 1 320px;
-    min-width: 0;
-}
-
-.columnaDatos {
-    flex: 1 1 320px;
-    min-width: 0;
+.resumen > span + span::before {
+    content: "\00b7";
+    color: #888;
+    margin-right: 14px;
 }
 
 /* Tira con desplazamiento horizontal. Sin JavaScript se arrastra a mano; con
@@ -230,29 +228,45 @@ select:focus {
     color: #888;
 }
 
+/* Dos listas de definiciones hermanas, cada una con la mitad de los pares. El
+   reparto se hace en la plantilla y no con column-count porque los navegadores
+   equilibran las columnas por altura: bastaria con que una etiqueta ocupase
+   dos lineas para que el reparto dejase de ser 9 y 8. */
 .especs {
-    border-collapse: collapse;
-    margin: 0;
-    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 30px;
     font-size: 0.95rem;
 }
 
-.especs th,
-.especs td {
-    text-align: left;
-    vertical-align: top;
-    padding: 3px 10px 3px 0;
+.especsColumna {
+    flex: 1 1 320px;
+    min-width: 0;
+    margin: 0;
 }
 
-.especs th {
+/* Cada par va envuelto en un div, agrupacion que HTML admite dentro de dl. Sin
+   el no habria forma de poner etiqueta y valor en la misma linea. */
+.espec {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.espec dt {
     font-weight: bold;
-    /* Se ajusta al contenido y solo se parte si de verdad no cabe. */
-    white-space: normal;
-    width: 1%;
+    /* Ocupa lo que mide su texto en lugar de una columna fija estrecha, que era
+       lo que partia "Tecnologia de deteccion de movimiento" en tres lineas. El
+       tope evita que un valor largo se quede sin sitio. */
+    flex: 0 1 auto;
+    max-width: 60%;
 }
 
-.especs tr {
-    border: none;
+.espec dd {
+    margin: 0;
+    min-width: 0;
 }
 
 .galeriaControles {

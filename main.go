@@ -54,6 +54,12 @@ var funcionesPlantilla = template.FuncMap{
 	"add": func(a, b int) int {
 		return a + b
 	},
+	// Punto de corte para repartir una lista en dos columnas con el mismo
+	// número de elementos, quedándose la primera con el sobrante cuando el
+	// total es impar: 17 pares dan 9 y 8.
+	"mitad": func(n int) int {
+		return (n + 1) / 2
+	},
 	"opcionesOrden": func() []opcionOrden {
 		return opcionesOrden
 	},

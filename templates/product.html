@@ -5,53 +5,51 @@
 
                 <h3 class="tituloProducto">{{ .Titulo }}</h3>
 
-                <div class="columnas">
-                    <div class="columnaImagen">
-                        {{ if .Galeria }}
-                            <div class="galeria">
-                                {{ range .Galeria }}
-                                    <a class="galeriaItem" href="{{ .Grande }}" target="_blank" rel="noopener">
-                                        <img src="{{ .Grande }}" alt="{{ .Alt }}" loading="lazy">
-                                    </a>
-                                {{ end }}
-                            </div>
-                            {{ if gt (len .Galeria) 1 }}
-                                <p class="galeriaAviso">{{ len .Galeria }} imágenes — desplaza para ver más</p>
-                                <script src="/static/gallery.js" defer></script>
+                <p class="resumen">
+                    {{ if .Valoracion }}<span>{{ .Valoracion }}</span>{{ end }}
+                    {{ if .Resenas }}<span>{{ .Resenas }}</span>{{ end }}
+                    {{ if .Precio }}
+                        <span><span class="price">{{ .Precio }}</span>{{ if .PrecioTachado }}<span class="precioTachado">{{ .PrecioTachado }}</span>{{ end }}{{ if .Descuento }}<span class="descuento">{{ .Descuento }}</span>{{ end }}</span>
+                    {{ else }}
+                        <span>Precio no disponible</span>
+                    {{ end }}
+                    {{ if .Disponible }}<span class="disponibilidad">{{ .Disponible }}</span>{{ end }}
+                </p>
+
+                {{ if .Galeria }}
+                    <div class="galeria">
+                        {{ range .Galeria }}
+                            <a class="galeriaItem" href="{{ .Grande }}" target="_blank" rel="noopener">
+                                <img src="{{ .Grande }}" alt="{{ .Alt }}" loading="lazy">
+                            </a>
+                        {{ end }}
+                    </div>
+                    {{ if gt (len .Galeria) 1 }}
+                        <p class="galeriaAviso">{{ len .Galeria }} imágenes — desplaza para ver más</p>
+                        <script src="/static/gallery.js" defer></script>
+                    {{ end }}
+                {{ else if .Imagen }}
+                    <p><img class="imagenProducto" src="{{ .Imagen }}" alt="{{ .Titulo }}"></p>
+                {{ end }}
+
+                {{ if .Especs }}
+                    {{ $corte := mitad (len .Especs) }}
+                    <h4>Ficha técnica</h4>
+                    <div class="especs">
+                        <dl class="especsColumna">
+                            {{ range slice .Especs 0 $corte }}
+                                <div class="espec"><dt>{{ .Etiqueta }}</dt><dd>{{ .Valor }}</dd></div>
                             {{ end }}
-                        {{ else if .Imagen }}
-                            <p><img class="imagenProducto" src="{{ .Imagen }}" alt="{{ .Titulo }}"></p>
-                        {{ end }}
-                    </div>
-
-                    <div class="columnaDatos">
-                        {{ if .Valoracion }}
-                            <p>{{ .Valoracion }}{{ if .Resenas }} | {{ .Resenas }}{{ end }}</p>
-                        {{ end }}
-
-                        {{ if .Precio }}
-                            <p>
-                                <span class="price">{{ .Precio }}</span>
-                                {{ if .PrecioTachado }}<span class="precioTachado">{{ .PrecioTachado }}</span>{{ end }}
-                                {{ if .Descuento }}<span class="descuento">{{ .Descuento }}</span>{{ end }}
-                            </p>
-                        {{ else }}
-                            <p><span>Precio no disponible</span></p>
-                        {{ end }}
-
-                        {{ if .Disponible }}
-                            <p class="disponibilidad">{{ .Disponible }}</p>
-                        {{ end }}
-
-                        {{ if .Especs }}
-                            <table class="especs">
-                                {{ range .Especs }}
-                                    <tr><th>{{ .Etiqueta }}</th><td>{{ .Valor }}</td></tr>
+                        </dl>
+                        {{ if lt $corte (len .Especs) }}
+                            <dl class="especsColumna">
+                                {{ range slice .Especs $corte }}
+                                    <div class="espec"><dt>{{ .Etiqueta }}</dt><dd>{{ .Valor }}</dd></div>
                                 {{ end }}
-                            </table>
+                            </dl>
                         {{ end }}
                     </div>
-                </div>
+                {{ end }}
 
                 {{ if .Descripcion }}
                     <h4>Acerca de este producto</h4>
