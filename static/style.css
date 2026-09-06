@@ -230,6 +230,52 @@ select:focus {
     font-weight: bold;
 }
 
+.variantes {
+    margin: 0 0 14px;
+}
+
+.variante {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 0 0 6px;
+}
+
+.varianteEtiqueta {
+    font-weight: bold;
+}
+
+.varianteValor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid rgba(128, 128, 128, 0.45);
+    border-radius: 4px;
+}
+
+.varianteValor img {
+    width: 32px;
+    height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+}
+
+.varianteValor.activa {
+    border-color: currentColor;
+    border-width: 2px;
+    padding: 2px 7px;
+    font-weight: bold;
+}
+
+/* Combinacion que Amazon no vende: se deja visible para que se entienda el
+   catalogo, pero sin enlace. */
+.varianteValor.noDisponible {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
 .opinionAvatar {
     width: 24px;
     height: 24px;

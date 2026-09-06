@@ -622,6 +622,22 @@ type Especificacion struct {
 	Valor    string
 }
 
+// Valor de una dimensión del selector de variantes (un color, una talla, un
+// formato) y la ficha a la que lleva.
+type Variante struct {
+	Valor        string
+	ASIN         string
+	Muestra      string
+	Seleccionada bool
+}
+
+// Dimensión del selector de variantes con todos sus valores.
+type Dimension struct {
+	Clave     string
+	Etiqueta  string
+	Variantes []Variante
+}
+
 // Opinión de un cliente sobre el producto.
 type Opinion struct {
 	// Posicion que ocupa en el orden que manda Amazon, el que su interfaz llama
@@ -769,6 +785,7 @@ type Producto struct {
 	Disponible       string
 	Descripcion      []string
 	DescripcionLarga []BloqueDescripcion
+	Dimensiones      []Dimension
 	Opiniones        []Opinion
 	OrdenOpiniones   string
 	Galeria          []Imagen
@@ -959,6 +976,140 @@ func descripcionLarga(doc *goquery.Document) []BloqueDescripcion {
 		}
 	}
 	return nil
+}
+
+// Valor de una clave dentro del objeto que Amazon registra en
+// P.register('twister-js-init-dpx-data'). Ese objeto no se puede parsear de una
+// vez porque no es JSON válido: trae comas colgando, del tipo
+// ["swatch","swatch",]. Cada clave por separado sí lo es, así que se localiza y
+// se recorta contando llaves, respetando las comillas y los escapes.
+func valorTwister(guion, clave string) string {
+	i := strings.Index(guion, `"`+clave+`"`)
+	if i < 0 {
+		return ""
+	}
+	i += len(clave) + 2
+	for i < len(guion) && strings.ContainsRune(" \t\r\n:", rune(guion[i])) {
+		i++
+	}
+	if i >= len(guion) {
+		return ""
+	}
+
+	if guion[i] == '"' {
+		for j := i + 1; j < len(guion); j++ {
+			if guion[j] == '\\' {
+				j++
+				continue
+			}
+			if guion[j] == '"' {
+				return guion[i : j+1]
+			}
+		}
+		return ""
+	}
+
+	var abre, cierra byte
+	switch guion[i] {
+	case '{':
+		abre, cierra = '{', '}'
+	case '[':
+		abre, cierra = '[', ']'
+	default:
+		return ""
+	}
+
+	prof := 0
+	dentro := false
+	for j := i; j < len(guion); j++ {
+		c := guion[j]
+		switch {
+		case dentro && c == '\\':
+			j++
+		case c == '"':
+			dentro = !dentro
+		case dentro:
+		case c == abre:
+			prof++
+		case c == cierra:
+			prof--
+			if prof == 0 {
+				return guion[i : j+1]
+			}
+		}
+	}
+	return ""
+}
+
+// Selector de variantes: color, talla, formato y demás dimensiones. Cada
+// combinación es una ficha distinta con su propio ASIN, de modo que el selector
+// acaba siendo una lista de enlaces a /dp/{asin}.
+//
+// Se lee del JSON del twister y no del árbol. La maquetación del selector
+// cambia entre categorías y Amazon la reescribe a menudo, mientras que estas
+// claves llevan años estables y además vienen ya resueltas: dimensionPageLoadUrls
+// da directamente la ficha de destino de cada valor.
+func dimensiones(doc *goquery.Document) []Dimension {
+	var guion string
+	doc.Find("script").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		if t := s.Text(); strings.Contains(t, "twister-js-init-dpx-data") {
+			guion = t
+			return false
+		}
+		return true
+	})
+	if guion == "" {
+		return nil
+	}
+
+	var claves []string
+	var valores map[string][]string
+	if json.Unmarshal([]byte(valorTwister(guion, "dimensions")), &claves) != nil {
+		return nil
+	}
+	if json.Unmarshal([]byte(valorTwister(guion, "variationValues")), &valores) != nil {
+		return nil
+	}
+
+	// Estas tres son adorno: sin ellas el selector sigue saliendo, solo que con
+	// la clave interna por rótulo y sin marcar cuál es la ficha actual.
+	etiquetas := map[string]string{}
+	json.Unmarshal([]byte(valorTwister(guion, "variationDisplayLabels")), &etiquetas)
+	seleccion := map[string]int{}
+	json.Unmarshal([]byte(valorTwister(guion, "selectedVariationValues")), &seleccion)
+	enlaces := map[string]map[string]string{}
+	json.Unmarshal([]byte(valorTwister(guion, "dimensionPageLoadUrls")), &enlaces)
+
+	var lista []Dimension
+	for _, clave := range claves {
+		if len(valores[clave]) < 2 {
+			continue
+		}
+		d := Dimension{Clave: clave, Etiqueta: etiquetas[clave]}
+		if d.Etiqueta == "" {
+			d.Etiqueta = clave
+		}
+
+		indiceActual, hayActual := seleccion[clave]
+		for i, valor := range valores[clave] {
+			v := Variante{Valor: valor, Seleccionada: hayActual && i == indiceActual}
+			if !v.Seleccionada {
+				// El valor de esta ficha no aparece en dimensionPageLoadUrls, que
+				// solo trae los destinos de los demás. Un valor sin destino es una
+				// combinación que Amazon no vende, y se pinta sin enlace.
+				v.ASIN = asinDeURL(enlaces[clave][valor])
+			}
+			// La miniatura de la muestra sí sale del árbol, porque el JSON no la
+			// trae. Es opcional: las dimensiones que no son de color no la tienen.
+			selector := "#" + clave + "_" + strconv.Itoa(i) + "-announce img.swatch-image"
+			if src, ok := doc.Find(selector).First().Attr("src"); ok {
+				v.Muestra = rutaProxyImagen(src)
+			}
+			d.Variantes = append(d.Variantes, v)
+		}
+		lista = append(lista, d)
+	}
+	return lista
 }
 
 // Version sin recortar de una imagen de Amazon. Sus URL tienen la forma
@@ -1510,6 +1661,7 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	ficha.DescripcionLarga = descripcionLarga(doc)
 	ficha.Galeria = galeria(res.Cuerpo)
 	ficha.Especs = especificaciones(doc)
+	ficha.Dimensiones = dimensiones(doc)
 	ficha.Opiniones = opiniones(doc)
 
 	cacheSetProducto(clave, ficha)

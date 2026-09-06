@@ -16,6 +16,25 @@
                     {{ if .Disponible }}<span class="disponibilidad">{{ .Disponible }}</span>{{ end }}
                 </p>
 
+                {{ if .Dimensiones }}
+                    <div class="variantes">
+                        {{ range .Dimensiones }}
+                            <p class="variante">
+                                <span class="varianteEtiqueta">{{ .Etiqueta }}:</span>
+                                {{ range .Variantes }}
+                                    {{ if .Seleccionada }}
+                                        <span class="varianteValor activa">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</span>
+                                    {{ else if .ASIN }}
+                                        <a class="varianteValor" href="/dp/{{ .ASIN }}?tld={{ $.TLD }}">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</a>
+                                    {{ else }}
+                                        <span class="varianteValor noDisponible" title="No disponible">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</span>
+                                    {{ end }}
+                                {{ end }}
+                            </p>
+                        {{ end }}
+                    </div>
+                {{ end }}
+
                 {{ if .Galeria }}
                     <div class="galeria">
                         {{ range .Galeria }}
