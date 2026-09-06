@@ -184,6 +184,22 @@ select:focus {
     text-align: left;
 }
 
+/* Los subtitulos vienen de h3 y h4 de Amazon, pero aqui cuelgan del h4 de la
+   seccion, asi que se pintan como h5 para no romper la jerarquia. Van pegados
+   al parrafo que encabezan y separados del anterior. */
+.descripcionLarga h5 {
+    font-size: 1rem;
+    margin: 18px 0 4px;
+}
+
+.descripcionLarga h5:first-child {
+    margin-top: 0;
+}
+
+.descripcionLarga p {
+    margin: 0 0 10px;
+}
+
 /* Linea unica con valoracion, resenas, precio y disponibilidad. flex-wrap la
    apila sola en pantalla estrecha, sin consultas de medios. Los elementos se
    alinean por la linea base porque el precio va a mayor tamano que el resto. */

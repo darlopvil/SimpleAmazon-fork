@@ -57,5 +57,14 @@
                         {{ range .Descripcion }}<li>{{ . }}</li>{{ end }}
                     </ul>
                 {{ end }}
+
+                {{ if .DescripcionLarga }}
+                    <h4>Descripción del producto</h4>
+                    <div class="descripcionLarga">
+                        {{ range .DescripcionLarga }}
+                            {{ if .Encabezado }}<h5>{{ .Texto }}</h5>{{ else }}<p>{{ .Texto }}</p>{{ end }}
+                        {{ end }}
+                    </div>
+                {{ end }}
             </div>
 {{ end }}

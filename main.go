@@ -22,6 +22,7 @@ import (
 
 	"github.com/Noooste/azuretls-client"
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 )
 
 var (
@@ -620,6 +621,14 @@ type Especificacion struct {
 	Valor    string
 }
 
+// Bloque de la descripción larga. Amazon la publica con subtítulos
+// intercalados entre los párrafos, de modo que una simple lista de cadenas
+// perdería esa estructura.
+type BloqueDescripcion struct {
+	Encabezado bool
+	Texto      string
+}
+
 // Amazon incrusta la galería completa como JSON dentro de un script, con todas
 // las resoluciones de cada imagen. Es más fiable que recorrer las miniaturas
 // del documento.
@@ -728,21 +737,22 @@ type Producto struct {
 	TLD    string
 	// El formulario de búsqueda es común a todas las páginas y necesita estos
 	// dos campos, aunque en una ficha de producto vayan siempre vacíos.
-	Sort          string
-	Query         string
-	Titulo        string
-	Imagen        string
-	Precio        string
-	PrecioTachado string
-	Descuento     string
-	Valoracion    string
-	Resenas       string
-	Disponible    string
-	Descripcion   []string
-	Galeria       []Imagen
-	Especs        []Especificacion
-	URLAmazon     string
-	Error         string
+	Sort             string
+	Query            string
+	Titulo           string
+	Imagen           string
+	Precio           string
+	PrecioTachado    string
+	Descuento        string
+	Valoracion       string
+	Resenas          string
+	Disponible       string
+	Descripcion      []string
+	DescripcionLarga []BloqueDescripcion
+	Galeria          []Imagen
+	Especs           []Especificacion
+	URLAmazon        string
+	Error            string
 }
 
 // Compone el importe a partir de sus partes. En la ficha de producto el span
@@ -801,6 +811,132 @@ func descripcionProducto(doc *goquery.Document) []string {
 		}
 	}
 	return lineas
+}
+
+// Longitud mínima de un párrafo de la descripción larga. El contenido A+ trae
+// rótulos de interfaz sueltos, como los del módulo de vídeo, que son cortos y
+// no aportan nada. Los encabezados quedan exentos: "Críticas" tiene ocho
+// caracteres y es contenido legítimo.
+const minimoDescripcionLarga = 15
+
+// Contenedores de los que sale el bloque que Amazon titula "Descripción del
+// producto", en orden de preferencia. No se ancla en el texto de ese
+// encabezado porque cambia con el marketplace y porque Amazon lo repite al
+// final del documento, en las plantillas ocultas de la vista rápida.
+var contenedoresDescripcionLarga = []string{
+	"#editorialReviews_feature_div",
+	"#productDescription",
+	"#aplus_feature_div",
+}
+
+// Texto de un nodo partido por sus <br>. En las fichas editoriales de algunos
+// libros los párrafos no van en <p>: cuelgan sueltos dentro de un <span> y se
+// separan con dos <br>, de modo que sin partir por ahí salen todos pegados.
+func textosSeparados(s *goquery.Selection) []string {
+	var trozos []string
+	var actual strings.Builder
+
+	var visitar func(*html.Node)
+	visitar = func(n *html.Node) {
+		for h := n.FirstChild; h != nil; h = h.NextSibling {
+			switch {
+			case h.Type == html.TextNode:
+				actual.WriteString(h.Data)
+			case h.Type != html.ElementNode:
+			case h.Data == "br":
+				trozos = append(trozos, actual.String())
+				actual.Reset()
+			case h.Data == "script" || h.Data == "style":
+			default:
+				visitar(h)
+			}
+		}
+	}
+	for _, n := range s.Nodes {
+		visitar(n)
+	}
+	trozos = append(trozos, actual.String())
+
+	var limpios []string
+	for _, t := range trozos {
+		if t := strings.Join(strings.Fields(t), " "); t != "" {
+			limpios = append(limpios, t)
+		}
+	}
+	return limpios
+}
+
+// Descripción larga del producto, la que Amazon titula "Descripción del
+// producto" y que va debajo de la lista de características.
+func descripcionLarga(doc *goquery.Document) []BloqueDescripcion {
+	// El mapa solo evita repeticiones dentro del propio bloque. No se deduplica
+	// contra "Acerca de este producto" aunque Amazon publique el mismo texto en
+	// los dos sitios: en las fichas de libros la "Contraportada" es literalmente
+	// la lista de características, y descartarla vaciaba ese apartado entero.
+	vistas := map[string]bool{}
+
+	for _, contenedor := range contenedoresDescripcionLarga {
+		raiz := doc.Find(contenedor).First()
+		if raiz.Length() == 0 {
+			continue
+		}
+
+		// Hay libros cuyos párrafos no van en <p>, sino sueltos dentro de un
+		// <div>, así que en las reseñas editoriales hay que aceptar el <div> como
+		// bloque de texto. En el contenido A+ no: los rótulos del módulo de vídeo
+		// cuelgan de un <div> y se colarían como si fuesen texto del producto.
+		candidatos := "h3, h4, p, li, div"
+		if contenedor == "#aplus_feature_div" {
+			candidatos = "h3, h4, p, li"
+		}
+
+		var crudos []BloqueDescripcion
+		raiz.Find(candidatos).Each(func(i int, s *goquery.Selection) {
+			// La tabla comparativa aporta celdas sueltas y rótulos de interfaz, y
+			// noscript solo envuelve imágenes de carga diferida.
+			if s.Closest("table").Length() > 0 || s.Closest("noscript").Length() > 0 {
+				return
+			}
+			// Solo los bloques más internos. En el contenido A+ cada característica
+			// es un li que envuelve un h4 y un p, así que quedarse también con el li
+			// devolvía el título y el texto pegados y luego otra vez por separado.
+			if s.Find(candidatos).Length() > 0 {
+				return
+			}
+			// El contenido A+ se divide en módulos. Si el módulo que contiene a este
+			// bloque lleva una tabla, su encabezado titula algo que aquí se descarta
+			// y acabaría encima de un texto que no le corresponde. Se mira desde el
+			// padre para no dar con el propio bloque.
+			if m := s.Parent().Closest("[class*=aplus]"); m.Length() > 0 && m.Find("table").Length() > 0 {
+				return
+			}
+			encabezado := s.Is("h3, h4")
+			for _, texto := range textosSeparados(s) {
+				if vistas[texto] {
+					continue
+				}
+				if !encabezado && len(texto) < minimoDescripcionLarga {
+					continue
+				}
+				vistas[texto] = true
+				crudos = append(crudos, BloqueDescripcion{Encabezado: encabezado, Texto: texto})
+			}
+		})
+
+		// Un encabezado sin texto debajo sobra: en el contenido A+ los hay que
+		// titulan módulos que se descartan por completo.
+		var bloques []BloqueDescripcion
+		for i, b := range crudos {
+			if b.Encabezado && (i+1 >= len(crudos) || crudos[i+1].Encabezado) {
+				continue
+			}
+			bloques = append(bloques, b)
+		}
+		if len(bloques) > 0 {
+			return bloques
+		}
+	}
+	return nil
 }
 
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
@@ -1202,6 +1338,7 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	ficha.Disponible = strings.Join(strings.Fields(
 		doc.Find("#availability span").First().Text()), " ")
 	ficha.Descripcion = descripcionProducto(doc)
+	ficha.DescripcionLarga = descripcionLarga(doc)
 	ficha.Galeria = galeria(res.Cuerpo)
 	ficha.Especs = especificaciones(doc)
 
