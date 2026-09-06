@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -621,6 +622,25 @@ type Especificacion struct {
 	Valor    string
 }
 
+// Opinión de un cliente sobre el producto.
+type Opinion struct {
+	// Posicion que ocupa en el orden que manda Amazon, el que su interfaz llama
+	// "más relevantes". Se conserva aunque la lista se reordene, porque ese
+	// orden no se puede recalcular a partir de los datos de la opinión.
+	Posicion   int
+	ID         string
+	Autor      string
+	Avatar     string
+	Estrellas  int
+	Titulo     string
+	Fecha      string
+	Variante   string
+	Verificada bool
+	Cuerpo     string
+	Utilidad   string
+	Fotos      []Imagen
+}
+
 // Bloque de la descripción larga. Amazon la publica con subtítulos
 // intercalados entre los párrafos, de modo que una simple lista de cadenas
 // perdería esa estructura.
@@ -749,6 +769,8 @@ type Producto struct {
 	Disponible       string
 	Descripcion      []string
 	DescripcionLarga []BloqueDescripcion
+	Opiniones        []Opinion
+	OrdenOpiniones   string
 	Galeria          []Imagen
 	Especs           []Especificacion
 	URLAmazon        string
@@ -937,6 +959,153 @@ func descripcionLarga(doc *goquery.Document) []BloqueDescripcion {
 		}
 	}
 	return nil
+}
+
+// Version sin recortar de una imagen de Amazon. Sus URL tienen la forma
+// {identificador}.{transformaciones}.{extension}, de modo que quitar los tramos
+// intermedios devuelve la original. Comprobado contra el popover de medios, que
+// sirve esas mismas fotos sin transformaciones: la miniatura
+// "71zTQljvthL._SY500_.jpg" se corresponde con "71zTQljvthL.jpg".
+func imagenSinRecorte(src string) string {
+	u, err := url.Parse(src)
+	if err != nil {
+		return src
+	}
+	corte := strings.LastIndex(u.Path, "/")
+	fichero := u.Path[corte+1:]
+	partes := strings.Split(fichero, ".")
+	if len(partes) < 3 {
+		return src
+	}
+	u.Path = u.Path[:corte+1] + partes[0] + "." + partes[len(partes)-1]
+	return u.String()
+}
+
+// Texto de un nodo con los espacios normalizados. El contenido de noscript se
+// descarta antes: el parseador de Go lo trata como texto crudo en vez de como
+// etiquetas, de modo que el avatar que Amazon mete ahí salía como un "<img
+// src=...>" literal delante del nombre del autor.
+func textoLimpio(s *goquery.Selection) string {
+	limpio := s.Clone()
+	limpio.Find("noscript").Remove()
+	return strings.Join(strings.Fields(limpio.Text()), " ")
+}
+
+// Primer descendiente con este data-hook. La opinión que lleva fotos incrusta
+// una copia entera de sí misma dentro de media-popover-container, con su autor,
+// su título y su fecha, así que hay que dejar fuera lo que caiga ahí.
+func campoOpinion(s *goquery.Selection, hook string) *goquery.Selection {
+	return s.Find("[data-hook="+hook+"]").FilterFunction(
+		func(i int, n *goquery.Selection) bool {
+			return n.Closest("[data-hook=media-popover-container]").Length() == 0
+		}).First()
+}
+
+// Estrellas de una opinión. El texto del icono ("5 de 5 estrellas") está
+// localizado, de modo que se lee la clase "a-star-N", que es la misma en los
+// veintiséis marketplaces.
+func estrellasOpinion(s *goquery.Selection) int {
+	clase, _ := campoOpinion(s, "review-star-rating").Attr("class")
+	for _, c := range strings.Fields(clase) {
+		resto, ok := strings.CutPrefix(c, "a-star-")
+		if !ok {
+			continue
+		}
+		// Las medias estrellas llegan como "a-star-4-5". Una opinión suelta
+		// siempre es un entero, pero no cuesta nada no romperse si cambia.
+		entero, _, _ := strings.Cut(resto, "-")
+		if n, err := strconv.Atoi(entero); err == nil && n >= 1 && n <= 5 {
+			return n
+		}
+	}
+	return 0
+}
+
+// Opiniones de clientes incrustadas en la ficha. Amazon deja trece; el resto
+// solo se obtienen con peticiones adicionales a /product-reviews, que redirige
+// al inicio de sesión, así que se trabaja con las que ya vienen.
+func opiniones(doc *goquery.Document) []Opinion {
+	var lista []Opinion
+
+	doc.Find("[data-hook=review]").Each(func(i int, s *goquery.Selection) {
+		o := Opinion{
+			Estrellas:  estrellasOpinion(s),
+			Autor:      textoLimpio(campoOpinion(s, "genome-widget")),
+			Titulo:     textoLimpio(campoOpinion(s, "reviewTitle")),
+			Fecha:      textoLimpio(campoOpinion(s, "review-date")),
+			Cuerpo:     textoLimpio(campoOpinion(s, "reviewRichContentContainer")),
+			Utilidad:   textoLimpio(campoOpinion(s, "helpful-vote-statement")),
+			Verificada: campoOpinion(s, "avp-badge").Length() > 0,
+		}
+		o.ID, _ = s.Attr("id")
+
+		// El avatar se carga en diferido: el src visible es un gif transparente y
+		// el bueno esta en data-src. Amazon repite la imagen dentro de un noscript,
+		// pero ahi no sirve, porque el parseador de Go trata ese contenido como
+		// texto y no como etiquetas.
+		if src, ok := campoOpinion(s, "genome-widget").Find("img[data-src]").First().Attr("data-src"); ok {
+			o.Avatar = rutaProxyImagen(src)
+		}
+
+		// Los tramos de la variante van en spans hermanos separados por un icono
+		// sin texto, de modo que concatenar el contenedor entero devolvía
+		// "Color: negroNombre de estilo: PS/2".
+		var tramos []string
+		campoOpinion(s, "format-strip").Find("span").Each(func(i int, t *goquery.Selection) {
+			if v := textoLimpio(t); v != "" {
+				tramos = append(tramos, v)
+			}
+		})
+		o.Variante = strings.Join(tramos, ", ")
+
+		// Las miniaturas del popover no llevan data-hook, así que aquí solo
+		// entran las de la propia opinión.
+		s.Find("img[data-hook=review-image-tile]").Each(func(i int, t *goquery.Selection) {
+			src, ok := t.Attr("src")
+			if !ok {
+				return
+			}
+			mini := rutaProxyImagen(src)
+			grande := rutaProxyImagen(imagenSinRecorte(src))
+			if mini == "" || grande == "" {
+				return
+			}
+			o.Fotos = append(o.Fotos, Imagen{Grande: grande, Mini: mini, Alt: "Foto de la opinión"})
+		})
+
+		if o.Titulo != "" || o.Cuerpo != "" {
+			o.Posicion = len(lista)
+			lista = append(lista, o)
+		}
+	})
+	return lista
+}
+
+// Criterios de ordenación de las opiniones. Se aplican sobre las que ya trae la
+// ficha, sin ninguna petición adicional. No hay ordenación por fecha porque
+// Amazon la publica solo como texto localizado y reconocer los nombres de mes
+// de los veintiséis marketplaces es un problema aparte.
+var ordenesOpiniones = map[string]bool{
+	"":      true,
+	"mejor": true,
+	"peor":  true,
+}
+
+func ordenarOpiniones(lista []Opinion, orden string) []Opinion {
+	if orden == "" || len(lista) < 2 {
+		return lista
+	}
+	// La ficha sale de la cache y se devuelve sin copiar el slice, de manera que
+	// ordenar sobre el original alteraria la entrada cacheada para todos.
+	copia := make([]Opinion, len(lista))
+	copy(copia, lista)
+	sort.SliceStable(copia, func(i, j int) bool {
+		if orden == "peor" {
+			return copia[i].Estrellas < copia[j].Estrellas
+		}
+		return copia[i].Estrellas > copia[j].Estrellas
+	})
+	return copia
 }
 
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
@@ -1341,6 +1510,7 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	ficha.DescripcionLarga = descripcionLarga(doc)
 	ficha.Galeria = galeria(res.Cuerpo)
 	ficha.Especs = especificaciones(doc)
+	ficha.Opiniones = opiniones(doc)
 
 	cacheSetProducto(clave, ficha)
 	return ficha
@@ -1517,6 +1687,11 @@ func handleProducto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ficha := producto(r.Context(), tld, asin)
+
+	if v := r.URL.Query().Get("resenas"); ordenesOpiniones[v] {
+		ficha.OrdenOpiniones = v
+	}
+	ficha.Opiniones = ordenarOpiniones(ficha.Opiniones, ficha.OrdenOpiniones)
 
 	if ficha.Error != "" {
 		estado := ficha.Estado

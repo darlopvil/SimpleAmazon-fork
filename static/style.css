@@ -200,6 +200,81 @@ select:focus {
     margin: 0 0 10px;
 }
 
+.ordenOpiniones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0 0 16px;
+    font-size: 0.95rem;
+}
+
+.opinion {
+    padding: 14px 0;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.opinionCabecera,
+.opinionMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    margin: 0;
+}
+
+.opinionMeta {
+    font-size: 0.9rem;
+    opacity: 0.75;
+}
+
+.opinionAutor {
+    font-weight: bold;
+}
+
+.opinionAvatar {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
+    border-radius: 50%;
+}
+
+.ordenOpiniones .activo {
+    font-weight: bold;
+    text-decoration: none;
+    pointer-events: none;
+}
+
+.opinionTitulo {
+    font-size: 1rem;
+    margin: 6px 0 2px;
+}
+
+.opinionCuerpo {
+    margin: 8px 0;
+    white-space: pre-line;
+}
+
+/* Las miniaturas llegan en 500 px y se muestran mucho mas pequenas, asi que la
+   version enlazada ya sirve de ampliacion. */
+.opinionFotos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.opinionFotos img {
+    width: auto;
+    max-width: 140px;
+    max-height: 140px;
+}
+
+.opinionUtilidad {
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+    opacity: 0.75;
+}
+
 /* Linea unica con valoracion, resenas, precio y disponibilidad. flex-wrap la
    apila sola en pantalla estrecha, sin consultas de medios. Los elementos se
    alinean por la linea base porque el precio va a mayor tamano que el resto. */

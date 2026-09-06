@@ -58,13 +58,39 @@
                     </ul>
                 {{ end }}
 
-                {{ if .DescripcionLarga }}
-                    <h4>Descripción del producto</h4>
-                    <div class="descripcionLarga">
-                        {{ range .DescripcionLarga }}
-                            {{ if .Encabezado }}<h5>{{ .Texto }}</h5>{{ else }}<p>{{ .Texto }}</p>{{ end }}
+                                             {{ if .Opiniones }}
+                    <h4 id="opiniones">Opiniones de clientes</h4>
+                    <p class="ordenOpiniones">
+                        Ordenar por:
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}#opiniones" data-orden="" class="{{ if not .OrdenOpiniones }}activo{{ end }}">Más relevantes</a>
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}&amp;resenas=mejor#opiniones" data-orden="mejor" class="{{ if eq .OrdenOpiniones "mejor" }}activo{{ end }}">Mejor valoradas</a>
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}&amp;resenas=peor#opiniones" data-orden="peor" class="{{ if eq .OrdenOpiniones "peor" }}activo{{ end }}">Peor valoradas</a>
+                    </p>
+                    <div class="opiniones">
+                        {{ range .Opiniones }}
+                            <article class="opinion" data-estrellas="{{ .Estrellas }}" data-relevancia="{{ .Posicion }}">
+                                <p class="opinionCabecera">
+                                    {{ if .Avatar }}<img class="opinionAvatar" src="{{ .Avatar }}" alt="" loading="lazy">{{ end }}
+                                    {{ if .Autor }}<span class="opinionAutor">{{ .Autor }}</span>{{ end }}
+                                    {{ if .Estrellas }}<span class="opinionEstrellas">{{ .Estrellas }} de 5</span>{{ end }}
+                                    {{ if .Verificada }}<span class="opinionVerificada">Compra verificada</span>{{ end }}
+                                </p>
+                                {{ if .Titulo }}<h5 class="opinionTitulo">{{ .Titulo }}</h5>{{ end }}
+                                <p class="opinionMeta">
+                                    {{ if .Fecha }}<span>{{ .Fecha }}</span>{{ end }}
+                                    {{ if .Variante }}<span>{{ .Variante }}</span>{{ end }}
+                                </p>
+                                {{ if .Cuerpo }}<p class="opinionCuerpo">{{ .Cuerpo }}</p>{{ end }}
+                                {{ if .Fotos }}
+                                    <div class="opinionFotos">
+                                        {{ range .Fotos }}<a href="{{ .Grande }}" target="_blank" rel="noopener"><img src="{{ .Mini }}" alt="{{ .Alt }}" loading="lazy"></a>{{ end }}
+                                    </div>
+                                {{ end }}
+                                {{ if .Utilidad }}<p class="opinionUtilidad">{{ .Utilidad }}</p>{{ end }}
+                            </article>
                         {{ end }}
                     </div>
+                    {{ if gt (len .Opiniones) 1 }}<script src="/static/reviews.js" defer></script>{{ end }}
                 {{ end }}
             </div>
 {{ end }}
