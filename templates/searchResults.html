@@ -1,4 +1,7 @@
 {{ define "contenido" }}
+            {{ if .Filtro }}
+                <p class="filtroActivo">Filtrando por la categoría de Amazon <code>{{ .Filtro }}</code> &mdash; <a href="/s?tld={{ .TLD }}&amp;k={{ .Query }}&amp;s={{ .Sort }}">buscar sin filtro</a></p>
+            {{ end }}
             {{ template "paginacion" . }}
             {{ if (gt .Pages 1)}}<hr>{{ end }}
 

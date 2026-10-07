@@ -108,6 +108,7 @@ type SearchResults struct {
 	TLD     string
 	Sort    string
 	Query   string
+	Filtro  string
 	Results []SearchResult
 	Error   string
 }
@@ -116,6 +117,7 @@ type TemplateValues struct {
 	Sort   string
 	TLD    string
 	Query  string
+	Filtro string
 	Idioma string
 }
 
@@ -197,10 +199,26 @@ var (
 	cache   = map[string]entradaCache{}
 )
 
-func claveCache(tld string, searchTerm string, page int, sort string) string {
+// Valor del parametro rh de Amazon, donde codifica el nodo de categoria y las
+// facetas: "n:3628728031" o "n:3628728031,p_36:1253504031". Llega del usuario y
+// acaba en una URL saliente, de modo que se acota el juego de caracteres y la
+// longitud antes de reenviarlo. Un valor que no encaje se descarta en silencio:
+// la busqueda sigue, solo que sin filtrar.
+var filtroValido = regexp.MustCompile(`^[A-Za-z0-9:,|_.+% -]{1,300}$`)
+
+func filtroBusqueda(valor string) string {
+	if !filtroValido.MatchString(valor) {
+		return ""
+	}
+	return valor
+}
+
+func claveCache(tld string, searchTerm string, page int, sort string, filtro string) string {
 	// El separador nulo evita que combinaciones distintas produzcan la misma
-	// clave al concatenarse.
-	return tld + "\x00" + searchTerm + "\x00" + strconv.Itoa(page) + "\x00" + sort
+	// clave al concatenarse. El filtro entra en la clave porque la misma
+	// busqueda con y sin el devuelve resultados distintos, y compartir entrada
+	// serviria los de una por los de la otra.
+	return tld + "\x00" + searchTerm + "\x00" + strconv.Itoa(page) + "\x00" + sort + "\x00" + filtro
 }
 
 // Caché de fichas de producto. Comparte el mismo límite y la misma expiración
@@ -772,9 +790,10 @@ type Producto struct {
 	ASIN   string
 	TLD    string
 	// El formulario de búsqueda es común a todas las páginas y necesita estos
-	// dos campos, aunque en una ficha de producto vayan siempre vacíos.
+	// tres campos, aunque en una ficha de producto vayan siempre vacíos.
 	Sort             string
 	Query            string
+	Filtro           string
 	Titulo           string
 	Imagen           string
 	Precio           string
@@ -1305,12 +1324,13 @@ func numeroResenas(etiqueta string) (int, bool) {
 	return n, err == nil
 }
 
-func search(ctx context.Context, tld string, searchTerm string, page int, sort string) SearchResults {
+func search(ctx context.Context, tld string, searchTerm string, page int, sort string, filtro string) SearchResults {
 	var resultsElement SearchResults
 	resultsElement.Query = searchTerm
 	resultsElement.TLD = tld
 	resultsElement.Page = page
 	resultsElement.Sort = sort
+	resultsElement.Filtro = filtro
 	resultsElement.Idioma = idiomaHTML(tld)
 
 	if !tldsPermitidos[tld] {
@@ -1321,7 +1341,7 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 
 	// Las entradas se guardan y se devuelven sin copiar, asi que a partir de
 	// aqui el resultado no debe modificarse: solo se pasa a la plantilla.
-	clave := claveCache(tld, searchTerm, page, sort)
+	clave := claveCache(tld, searchTerm, page, sort, filtro)
 	if cacheado, ok := cacheGet(clave); ok {
 		return cacheado
 	}
@@ -1342,6 +1362,11 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	parameters.Add("k", searchTerm)
 	parameters.Add("page", strconv.Itoa(page))
 	parameters.Add("s", sort)
+	// Amazon lo honra sin necesidad de llevar el nombre de la categoria en la
+	// ruta, comprobado con peticiones intercaladas con y sin el.
+	if filtro != "" {
+		parameters.Add("rh", filtro)
+	}
 	requestURL.RawQuery = parameters.Encode()
 
 	// No se fija Accept-Encoding a proposito: cuando la cabecera se establece a
@@ -1594,7 +1619,7 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 
 	ficha.URLAmazon = "https://www.amazon." + tld + "/dp/" + asin
 
-	clave := claveCache(tld, "dp:"+asin, 0, "")
+	clave := claveCache(tld, "dp:"+asin, 0, "", "")
 	if cacheado, ok := cacheProducto(clave); ok {
 		return cacheado
 	}
@@ -1673,6 +1698,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := ""
 	page := 1
 	sort := ""
+	filtro := ""
 
 	if r.Method == "GET" {
 		// get url parameters
@@ -1690,6 +1716,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		sortInQuery := r.URL.Query()["s"]
 		if len(sortInQuery) > 0 {
 			sort = sortInQuery[0]
+		}
+
+		filtroInQuery := r.URL.Query()["rh"]
+		if len(filtroInQuery) > 0 {
+			filtro = filtroBusqueda(filtroInQuery[0])
 		}
 
 		pageInQuery := r.URL.Query()["page"]
@@ -1722,6 +1753,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		parameters.Add("k", r.FormValue("k"))
 		parameters.Add("s", r.FormValue("s"))
 		parameters.Add("page", strconv.Itoa(page))
+		// El filtro viaja en un campo oculto del formulario para que no se pierda
+		// al reescribir la consulta desde una pagina ya filtrada.
+		if f := filtroBusqueda(r.FormValue("rh")); f != "" {
+			parameters.Add("rh", f)
+		}
 		searchURL.RawQuery = parameters.Encode()
 
 		// Sin este return la ejecucion continuaba hacia el cuerpo comun de la
@@ -1794,7 +1830,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	// get the result
 
-	result := search(r.Context(), tld, query, page, sort)
+	result := search(r.Context(), tld, query, page, sort, filtro)
 
 	if result.Error != "" {
 		// El mensaje se renderiza dentro de la plantilla y con un codigo de
