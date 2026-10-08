@@ -851,17 +851,26 @@ func descripcionProducto(doc *goquery.Document) []string {
 		return lineas
 	}
 
-	// En las fichas editoriales cada párrafo lleva un span dentro, de modo que
-	// buscar ambos devolvía el mismo texto dos veces. Se recorren solo los
-	// párrafos y se descartan los repetidos, porque Amazon publica la misma
-	// reseña en más de un contenedor.
+	// Hay fichas cuya descripción no va en <p>: el texto cuelga suelto de un
+	// <div> y los párrafos se separan con <br>. Buscando solo <p> esas fichas se
+	// quedaban sin el bloque entero aunque el contenedor sí tuviera texto.
+	//
+	// Se toman los bloques más internos y se descartan los repetidos: cada
+	// párrafo lleva un span dentro, de modo que recoger también los
+	// contenedores devolvía el mismo texto dos veces, y Amazon publica además
+	// la misma reseña en más de un contenedor.
+	const candidatos = "p, li, div"
 	vistas := map[string]bool{}
 	for _, contenedor := range []string{"#bookDescription_feature_div", "#productDescription"} {
-		doc.Find(contenedor).First().Find("p").Each(func(i int, s *goquery.Selection) {
-			t := strings.Join(strings.Fields(s.Text()), " ")
-			if len(t) > 40 && !vistas[t] {
-				vistas[t] = true
-				lineas = append(lineas, t)
+		doc.Find(contenedor).First().Find(candidatos).Each(func(i int, s *goquery.Selection) {
+			if s.Find(candidatos).Length() > 0 {
+				return
+			}
+			for _, t := range textosSeparados(s) {
+				if len(t) > 40 && !vistas[t] {
+					vistas[t] = true
+					lineas = append(lineas, t)
+				}
 			}
 		})
 		if len(lineas) > 0 {
