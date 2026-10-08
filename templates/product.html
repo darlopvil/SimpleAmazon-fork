@@ -72,9 +72,15 @@
 
                 {{ if .Descripcion }}
                     <h4>Acerca de este producto</h4>
-                    <ul class="descripcion">
-                        {{ range .Descripcion }}<li>{{ . }}</li>{{ end }}
-                    </ul>
+                    {{ if .DescripcionLista }}
+                        <ul class="descripcion">
+                            {{ range .Descripcion }}<li>{{ . }}</li>{{ end }}
+                        </ul>
+                    {{ else }}
+                        <div class="descripcion">
+                            {{ range .Descripcion }}<p>{{ . }}</p>{{ end }}
+                        </div>
+                    {{ end }}
                 {{ end }}
 
                                              {{ if .Opiniones }}

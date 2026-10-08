@@ -803,6 +803,7 @@ type Producto struct {
 	Resenas          string
 	Disponible       string
 	Descripcion      []string
+	DescripcionLista bool
 	DescripcionLarga []BloqueDescripcion
 	Dimensiones      []Dimension
 	Opiniones        []Opinion
@@ -839,7 +840,12 @@ func precioCompuesto(sel *goquery.Selection) string {
 // Descripción del producto. Amazon la publica en contenedores distintos según
 // la categoría: los artículos corrientes usan una lista de características y
 // los libros una reseña editorial.
-func descripcionProducto(doc *goquery.Document) []string {
+//
+// El segundo valor dice si lo devuelto es de verdad una lista. Las viñetas de
+// feature-bullets lo son; lo que sale de las ramas de reserva son párrafos
+// corridos, y pintarlos con topos convierte la descripción de un libro en un
+// solo punto con un ladrillo de texto dentro.
+func descripcionProducto(doc *goquery.Document) ([]string, bool) {
 	var lineas []string
 
 	doc.Find("#feature-bullets li span.a-list-item").Each(func(i int, s *goquery.Selection) {
@@ -848,7 +854,7 @@ func descripcionProducto(doc *goquery.Document) []string {
 		}
 	})
 	if len(lineas) > 0 {
-		return lineas
+		return lineas, true
 	}
 
 	// Hay fichas cuya descripción no va en <p>: el texto cuelga suelto de un
@@ -874,10 +880,10 @@ func descripcionProducto(doc *goquery.Document) []string {
 			}
 		})
 		if len(lineas) > 0 {
-			return lineas
+			return lineas, false
 		}
 	}
-	return lineas
+	return lineas, false
 }
 
 // Longitud mínima de un párrafo de la descripción larga. El contenido A+ trae
@@ -1691,7 +1697,7 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	ficha.Resenas, _ = doc.Find("#acrCustomerReviewText").First().Attr("aria-label")
 	ficha.Disponible = strings.Join(strings.Fields(
 		doc.Find("#availability span").First().Text()), " ")
-	ficha.Descripcion = descripcionProducto(doc)
+	ficha.Descripcion, ficha.DescripcionLista = descripcionProducto(doc)
 	ficha.DescripcionLarga = descripcionLarga(doc)
 	ficha.Galeria = galeria(res.Cuerpo)
 	ficha.Especs = especificaciones(doc)

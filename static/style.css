@@ -184,6 +184,10 @@ select:focus {
     text-align: left;
 }
 
+.descripcion p {
+    margin: 0 0 10px;
+}
+
 /* Los subtitulos vienen de h3 y h4 de Amazon, pero aqui cuelgan del h4 de la
    seccion, asi que se pintan como h5 para no romper la jerarquia. Van pegados
    al parrafo que encabezan y separados del anterior. */
