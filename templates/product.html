@@ -25,7 +25,7 @@
                                     {{ if .Seleccionada }}
                                         <span class="varianteValor activa">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</span>
                                     {{ else if .ASIN }}
-                                        <a class="varianteValor" href="/dp/{{ .ASIN }}?tld={{ $.TLD }}">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</a>
+                                        <a class="varianteValor" href="/dp/{{ .ASIN }}?tld={{ $.TLD }}{{ if .Personalizacion }}&amp;customId={{ .Personalizacion }}{{ end }}">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</a>
                                     {{ else }}
                                         <span class="varianteValor noDisponible" title="No disponible">{{ if .Muestra }}<img src="{{ .Muestra }}" alt="" loading="lazy">{{ end }}{{ .Valor }}</span>
                                     {{ end }}
@@ -87,9 +87,9 @@
                     <h4 id="opiniones">Opiniones de clientes</h4>
                     <p class="ordenOpiniones">
                         Ordenar por:
-                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}#opiniones" data-orden="" class="{{ if not .OrdenOpiniones }}activo{{ end }}">Más relevantes</a>
-                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}&amp;resenas=mejor#opiniones" data-orden="mejor" class="{{ if eq .OrdenOpiniones "mejor" }}activo{{ end }}">Mejor valoradas</a>
-                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}&amp;resenas=peor#opiniones" data-orden="peor" class="{{ if eq .OrdenOpiniones "peor" }}activo{{ end }}">Peor valoradas</a>
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}{{ if .Personalizacion }}&amp;customId={{ .Personalizacion }}{{ end }}#opiniones" data-orden="" class="{{ if not .OrdenOpiniones }}activo{{ end }}">Más relevantes</a>
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}{{ if .Personalizacion }}&amp;customId={{ .Personalizacion }}{{ end }}&amp;resenas=mejor#opiniones" data-orden="mejor" class="{{ if eq .OrdenOpiniones "mejor" }}activo{{ end }}">Mejor valoradas</a>
+                        <a href="/dp/{{ .ASIN }}?tld={{ .TLD }}{{ if .Personalizacion }}&amp;customId={{ .Personalizacion }}{{ end }}&amp;resenas=peor#opiniones" data-orden="peor" class="{{ if eq .OrdenOpiniones "peor" }}activo{{ end }}">Peor valoradas</a>
                     </p>
                     <div class="opiniones">
                         {{ range .Opiniones }}

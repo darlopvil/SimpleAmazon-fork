@@ -647,6 +647,11 @@ type Variante struct {
 	ASIN         string
 	Muestra      string
 	Seleccionada bool
+	// Producto de Merch on Demand que hay debajo. En las camisetas y demás
+	// artículos de esa línea todas las tallas y cortes comparten ASIN y se
+	// distinguen solo por el parámetro customId, así que sin él todos los
+	// enlaces del selector llevaban a la misma combinación.
+	Personalizacion string
 }
 
 // Dimensión del selector de variantes con todos sus valores.
@@ -804,6 +809,7 @@ type Producto struct {
 	Disponible       string
 	Descripcion      []string
 	DescripcionLista bool
+	Personalizacion  string
 	DescripcionLarga []BloqueDescripcion
 	Dimensiones      []Dimension
 	Opiniones        []Opinion
@@ -1132,6 +1138,7 @@ func dimensiones(doc *goquery.Document) []Dimension {
 				// solo trae los destinos de los demás. Un valor sin destino es una
 				// combinación que Amazon no vende, y se pinta sin enlace.
 				v.ASIN = asinDeURL(enlaces[clave][valor])
+				v.Personalizacion = personalizacionDeURL(enlaces[clave][valor])
 			}
 			// La miniatura de la muestra sí sale del árbol, porque el JSON no la
 			// trae. Es opcional: las dimensiones que no son de color no la tienen.
@@ -1180,7 +1187,7 @@ func textoLimpio(s *goquery.Selection) string {
 // una copia entera de sí misma dentro de media-popover-container, con su autor,
 // su título y su fecha, así que hay que dejar fuera lo que caiga ahí.
 func campoOpinion(s *goquery.Selection, hook string) *goquery.Selection {
-	return s.Find("[data-hook="+hook+"]").FilterFunction(
+	return s.Find("[data-hook=" + hook + "]").FilterFunction(
 		func(i int, n *goquery.Selection) bool {
 			return n.Closest("[data-hook=media-popover-container]").Length() == 0
 		}).First()
@@ -1291,6 +1298,21 @@ func ordenarOpiniones(lista []Opinion, orden string) []Opinion {
 		return copia[i].Estrellas > copia[j].Estrellas
 	})
 	return copia
+}
+
+// Producto de Merch on Demand indicado en un destino del selector de
+// variantes, del tipo /dp/B0H3LHB1V5?customizationToken=...&customId=B0B5B7TLCC.
+// Se comprobó que Amazon sirve la combinación pedida con customId solo, sin el
+// token, así que es lo único que se conserva.
+func personalizacionDeURL(enlace string) string {
+	u, err := url.Parse(enlace)
+	if err != nil {
+		return ""
+	}
+	if p := u.Query().Get("customId"); asinValido(p) {
+		return p
+	}
+	return ""
 }
 
 // Construye la URL definitiva de un resultado. Amazon devuelve unas veces una
@@ -1615,7 +1637,7 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 
 // Obtiene la ficha de un producto. Reutiliza el cliente saliente, la detección
 // de bloqueo y la caché de la búsqueda; solo cambia lo que se extrae.
-func producto(ctx context.Context, tld string, asin string) Producto {
+func producto(ctx context.Context, tld string, asin string, personalizacion string) Producto {
 	var ficha Producto
 	ficha.ASIN = asin
 	ficha.TLD = tld
@@ -1633,8 +1655,14 @@ func producto(ctx context.Context, tld string, asin string) Producto {
 	}
 
 	ficha.URLAmazon = "https://www.amazon." + tld + "/dp/" + asin
+	if personalizacion != "" {
+		ficha.Personalizacion = personalizacion
+		ficha.URLAmazon += "?customId=" + personalizacion
+	}
 
-	clave := claveCache(tld, "dp:"+asin, 0, "", "")
+	// La personalización ocupa el hueco del filtro en la clave: la misma ficha
+	// con dos customId distintos son dos combinaciones distintas.
+	clave := claveCache(tld, "dp:"+asin, 0, "", personalizacion)
 	if cacheado, ok := cacheProducto(clave); ok {
 		return cacheado
 	}
@@ -1889,7 +1917,15 @@ func handleProducto(w http.ResponseWriter, r *http.Request) {
 		tld = v
 	}
 
-	ficha := producto(r.Context(), tld, asin)
+	// Llega del usuario y acaba en la URL saliente, de modo que se valida con
+	// la misma forma que un ASIN. Si no encaja se ignora y se sirve la
+	// combinación por defecto.
+	personalizacion := r.URL.Query().Get("customId")
+	if !asinValido(personalizacion) {
+		personalizacion = ""
+	}
+
+	ficha := producto(r.Context(), tld, asin, personalizacion)
 
 	if v := r.URL.Query().Get("resenas"); ordenesOpiniones[v] {
 		ficha.OrdenOpiniones = v
