@@ -748,6 +748,31 @@ func limpiarEtiqueta(t string) string {
 	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(t), ":"))
 }
 
+// Restos de "(See Top 100 in ...)" una vez quitado el enlace de dentro.
+var parentesisVacios = regexp.MustCompile(`\(\s*\)`)
+
+// Valor del rango de ventas, que no sigue la forma etiqueta/valor del resto:
+// el rango principal va como texto suelto, seguido del enlace "See Top 100",
+// y los rangos por categoría en una lista anidada. Se recibe una copia del
+// contenedor ya sin la etiqueta. Del principal se quitan los enlaces y los
+// paréntesis que dejan vacíos; en los subrangos se conservan, porque ahí el
+// enlace es el nombre de la categoría ("nº92 en <a>Ratones</a>").
+func componerRangos(c *goquery.Selection) string {
+	principal := c.Clone()
+	principal.Find("ul, a").Remove()
+	rangos := []string{parentesisVacios.ReplaceAllString(textoLimpio(principal), "")}
+	c.Find("ul li").Each(func(i int, li *goquery.Selection) {
+		rangos = append(rangos, textoLimpio(li))
+	})
+	var limpios []string
+	for _, r := range rangos {
+		if r = strings.TrimSpace(r); r != "" {
+			limpios = append(limpios, r)
+		}
+	}
+	return strings.Join(limpios, "; ")
+}
+
 // Ficha técnica del producto. Amazon la publica en bloques con estructuras
 // distintas: una tabla de resumen, una lista de detalles y, en el diseño que
 // está desplegando ahora, el panel lateral de "Product specifications", que es
@@ -785,9 +810,33 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 
 	doc.Find("#detailBullets_feature_div li span.a-list-item").Each(func(i int, li *goquery.Selection) {
 		spans := li.Find("span")
-		if spans.Length() >= 2 {
-			anadir(spans.Eq(0).Text(), spans.Eq(1).Text())
+		if spans.Length() < 2 {
+			return
 		}
+		// El rango de ventas lleva una lista anidada de subrangos. Leer el
+		// segundo span devolvía el primero de ellos en lugar del principal.
+		if li.Find("ul").Length() > 0 {
+			c := li.Clone()
+			c.Find("span").First().Remove()
+			anadir(spans.Eq(0).Text(), componerRangos(c))
+			return
+		}
+		anadir(spans.Eq(0).Text(), spans.Eq(1).Text())
+	})
+
+	// En las fichas del diseño clásico de .es el rango de ventas no está en
+	// detailBullets sino en las tablas del expander, que no se leen porque
+	// repiten el resto de datos con otros rótulos. Se recoge solo esa fila,
+	// reconocida por el enlace a /gp/bestsellers y no por la etiqueta, que
+	// cambia con cada idioma. Va antes del panel para que, si también lo trae,
+	// prevalezca esta versión, ya limpia del enlace "See Top 100".
+	doc.Find("table.prodDetTable tr").Each(func(i int, tr *goquery.Selection) {
+		th := tr.Find("th").First()
+		td := tr.Find("td").First()
+		if th.Length() == 0 || td.Find(`a[href*="/gp/bestsellers"]`).Length() == 0 {
+			return
+		}
+		anadir(th.Text(), componerRangos(td.Clone()))
 	})
 
 	// El panel va el último para que, en los datos que comparte con los
