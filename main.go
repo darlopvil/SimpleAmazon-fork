@@ -748,8 +748,10 @@ func limpiarEtiqueta(t string) string {
 	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(t), ":"))
 }
 
-// Ficha técnica del producto. Amazon la publica en dos bloques con estructuras
-// distintas: una tabla de resumen y una lista de detalles.
+// Ficha técnica del producto. Amazon la publica en bloques con estructuras
+// distintas: una tabla de resumen, una lista de detalles y, en el diseño que
+// está desplegando ahora, el panel lateral de "Product specifications", que es
+// el más completo (tejido, corte, gramaje, marca, número de parte...).
 func especificaciones(doc *goquery.Document) []Especificacion {
 	var specs []Especificacion
 	vistas := map[string]bool{}
@@ -764,10 +766,13 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 	anadir := func(etiqueta, valor string) {
 		etiqueta = limpiarEtiqueta(etiqueta)
 		valor = strings.Join(strings.Fields(valor), " ")
-		if etiqueta == "" || valor == "" || vistas[etiqueta] || descartadas[etiqueta] {
+		// La comparación ignora mayúsculas: el panel dice "Fabric Type" donde
+		// otros bloques dicen "Fabric type".
+		clave := strings.ToLower(etiqueta)
+		if etiqueta == "" || valor == "" || vistas[clave] || descartadas[etiqueta] {
 			return
 		}
-		vistas[etiqueta] = true
+		vistas[clave] = true
 		specs = append(specs, Especificacion{Etiqueta: etiqueta, Valor: valor})
 	}
 
@@ -783,6 +788,27 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 		if spans.Length() >= 2 {
 			anadir(spans.Eq(0).Text(), spans.Eq(1).Text())
 		}
+	})
+
+	// El panel va el último para que, en los datos que comparte con los
+	// bloques anteriores, se conserve el valor de siempre: su versión de
+	// "Best Sellers Rank", por ejemplo, arrastra el texto del enlace "See Top
+	// 100". La tabla prodDetTable es la misma que usaban las fichas antiguas en
+	// productDetails_techSpec_section_*, así que el selector cubre también esas.
+	//
+	// No se leen los "Top highlights" de productFactsDesktopExpander: repiten
+	// datos del panel con otro rótulo ("Care instructions" frente a "Product
+	// Care Instructions"), de modo que no se pueden deduplicar por etiqueta y
+	// saldrían dos veces.
+	doc.Find("table.prodDetTable tr").Each(func(i int, tr *goquery.Selection) {
+		th := tr.Find("th").First()
+		td := tr.Find("td").First()
+		if th.Length() == 0 || td.Length() == 0 {
+			return
+		}
+		valor := td.Clone()
+		valor.Find("script, style, noscript").Remove()
+		anadir(th.Text(), valor.Text())
 	})
 
 	return specs
@@ -854,8 +880,14 @@ func precioCompuesto(sel *goquery.Selection) string {
 func descripcionProducto(doc *goquery.Document) ([]string, bool) {
 	var lineas []string
 
-	doc.Find("#feature-bullets li span.a-list-item").Each(func(i int, s *goquery.Selection) {
-		if t := strings.Join(strings.Fields(s.Text()), " "); t != "" {
+	// Las viñetas van en feature-bullets en el diseño clásico y dentro de
+	// productFactsDesktopExpander, bajo el rótulo "About this item", en el que
+	// Amazon está desplegando ahora. Se miran los dos y se descartan repetidas
+	// por si alguna ficha llegase con ambos.
+	vistasVinetas := map[string]bool{}
+	doc.Find("#feature-bullets li span.a-list-item, #productFactsDesktopExpander li span.a-list-item").Each(func(i int, s *goquery.Selection) {
+		if t := strings.Join(strings.Fields(s.Text()), " "); t != "" && !vistasVinetas[t] {
+			vistasVinetas[t] = true
 			lineas = append(lineas, t)
 		}
 	})
