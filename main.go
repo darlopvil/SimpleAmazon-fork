@@ -1768,9 +1768,58 @@ func producto(ctx context.Context, tld string, asin string, personalizacion stri
 	ficha.Especs = especificaciones(doc)
 	ficha.Dimensiones = dimensiones(doc)
 	ficha.Opiniones = opiniones(doc)
+	if len(ficha.Opiniones) == 0 {
+		if n, ok := numeroResenas(ficha.Resenas); ok && n > 0 {
+			ficha.Opiniones = reintentarOpiniones(ctx, ficha.URLAmazon, cabeceras, tld, asin)
+		}
+	}
 
 	cacheSetProducto(clave, ficha)
 	return ficha
+}
+
+// Reintentos cuando una ficha con valoraciones llega sin opiniones.
+const reintentosOpiniones = 4
+
+// Amazon no incrusta las opiniones de forma determinista: la misma ficha,
+// pedida varias veces seguidas, viene unas con ellas y otras sin ellas, sin
+// ninguna marca en el documento que permita saber de antemano cuál va a tocar.
+// Tampoco depende de la combinación de variante. En catorce peticiones a
+// B0H3LHB1V5 faltaron en cuatro, cerca de un 30 %. Con dos reintentos se
+// seguían quedando sin opiniones en torno al 3 % de las cargas; con cuatro
+// baja a menos del 0,5 %, y como solo se gastan cuando fallan, el coste medio
+// sigue siendo de media petición extra por ficha.
+//
+// Solo se reintenta cuando la ficha declara valoraciones, para no repetir la
+// petición en productos que no tienen ninguna. Del reintento solo se aprovechan
+// las opiniones; el resto de la ficha ya está extraído. Cada intento se deja en
+// el registro, porque es tráfico adicional hacia Amazon y sirve además para
+// estudiar el bloqueo.
+func reintentarOpiniones(ctx context.Context, destino string, cabeceras [][2]string, tld, asin string) []Opinion {
+	for intento := 1; intento <= reintentosOpiniones; intento++ {
+		res, err := obtener(ctx, destino, cabeceras, maxCuerpo)
+		if err != nil {
+			fmt.Printf("reintento de opiniones: tld=%s asin=%s intento=%d error=%v\n", tld, asin, intento, err)
+			return nil
+		}
+		if res.Estado != 200 || esBloqueo(res.Cuerpo) {
+			// Un bloqueo no se insiste: solo agravaría la situación.
+			fmt.Printf("reintento de opiniones: tld=%s asin=%s intento=%d estado=%d bloqueo=%v bytes=%d\n",
+				tld, asin, intento, res.Estado, esBloqueo(res.Cuerpo), len(res.Cuerpo))
+			return nil
+		}
+		doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res.Cuerpo))
+		if err != nil {
+			return nil
+		}
+		lista := opiniones(doc)
+		fmt.Printf("reintento de opiniones: tld=%s asin=%s intento=%d opiniones=%d bytes=%d\n",
+			tld, asin, intento, len(lista), len(res.Cuerpo))
+		if len(lista) > 0 {
+			return lista
+		}
+	}
+	return nil
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
