@@ -793,14 +793,19 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 	// El panel va el último para que, en los datos que comparte con los
 	// bloques anteriores, se conserve el valor de siempre: su versión de
 	// "Best Sellers Rank", por ejemplo, arrastra el texto del enlace "See Top
-	// 100". La tabla prodDetTable es la misma que usaban las fichas antiguas en
-	// productDetails_techSpec_section_*, así que el selector cubre también esas.
+	// 100".
+	//
+	// El selector se acota al panel. Las fichas del diseño clásico traen
+	// también tablas prodDetTable, en productDetails_expanderSectionTables, y
+	// repiten los datos de productOverview con otros rótulos ("Tecnología de
+	// conectividad" frente a "Tecnología de conexión"), así que leerlas llenaba
+	// la ficha técnica de duplicados imposibles de detectar por la etiqueta.
 	//
 	// No se leen los "Top highlights" de productFactsDesktopExpander: repiten
 	// datos del panel con otro rótulo ("Care instructions" frente a "Product
 	// Care Instructions"), de modo que no se pueden deduplicar por etiqueta y
 	// saldrían dos veces.
-	doc.Find("table.prodDetTable tr").Each(func(i int, tr *goquery.Selection) {
+	doc.Find(".voyager-side-sheet-attribute-section table.prodDetTable tr").Each(func(i int, tr *goquery.Selection) {
 		th := tr.Find("th").First()
 		td := tr.Find("td").First()
 		if th.Length() == 0 || td.Length() == 0 {
