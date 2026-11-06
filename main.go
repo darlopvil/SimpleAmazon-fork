@@ -2232,6 +2232,14 @@ func proxyMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Amazon declara el tamaño de la imagen. Si supera el límite, se rechaza
+	// antes de enviar nada: reenviar la cabecera y cortar el cuerpo prometería
+	// al navegador bytes que nunca llegan.
+	if resp.ContentLength > maxImagen {
+		http.Error(w, "La imagen es demasiado grande", http.StatusBadGateway)
+		return
+	}
+
 	w.Header().Set("Content-Type", tipo)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Las URL de imagen de Amazon incluyen el identificador del recurso, asi
