@@ -912,7 +912,7 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 	doc.Find("#productOverview_feature_div tr").Each(func(i int, tr *goquery.Selection) {
 		celdas := tr.Find("td")
 		if celdas.Length() >= 2 {
-			anadir(celdas.Eq(0).Text(), celdas.Eq(1).Text())
+			anadir(textoCelda(celdas.Eq(0)), textoCelda(celdas.Eq(1)))
 		}
 	})
 
@@ -968,9 +968,7 @@ func especificaciones(doc *goquery.Document) []Especificacion {
 		if th.Length() == 0 || td.Length() == 0 {
 			return
 		}
-		valor := td.Clone()
-		valor.Find("script, style, noscript").Remove()
-		anadir(th.Text(), valor.Text())
+		anadir(th.Text(), textoCelda(td))
 	})
 
 	return specs
@@ -1365,6 +1363,18 @@ func imagenSinRecorte(src string) string {
 	}
 	u.Path = u.Path[:corte+1] + partes[0] + "." + partes[len(partes)-1]
 	return u.String()
+}
+
+// Texto de una celda de la ficha técnica. En el resumen del producto, los
+// valores largos ("Dispositivos compatibles", "Usos específicos") traen dentro
+// de la propia celda el script con el que Amazon los recorta y un enlace "Ver
+// más", y Text() los devolvía pegados al valor. La copia recortada
+// (a-truncate-cut) se quita también: cuando llega rellena, repite el texto
+// completo que ya está en a-truncate-full.
+func textoCelda(s *goquery.Selection) string {
+	limpio := s.Clone()
+	limpio.Find(`script, style, noscript, .a-truncate-cut, [id^="po-attribute-see-more"]`).Remove()
+	return limpio.Text()
 }
 
 // Texto de un nodo con los espacios normalizados. El contenido de noscript se
