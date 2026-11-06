@@ -1631,12 +1631,6 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	// con codigo 200 y hay que inspeccionarlo antes de parsearlo, porque de lo
 	// contrario se interpretarian como una busqueda sin resultados.
 	cuerpo := res.Cuerpo
-	if err != nil {
-		fmt.Println("fallo al leer la respuesta de Amazon:", err)
-		resultsElement.Error = "No se pudo leer la respuesta de Amazon"
-		resultsElement.Estado = http.StatusBadGateway
-		return resultsElement
-	}
 
 	if esBloqueo(cuerpo) {
 		// Se registra el detalle de la respuesta bloqueada. Sin estos datos no
