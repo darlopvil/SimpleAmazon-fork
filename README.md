@@ -17,6 +17,10 @@ moment you clicked one. This fork implements the product page.
   reviews and a variant picker.
 - **Image proxy** at `/mediaproxy/{host}/{path}`. Nothing on the page is loaded
   from Amazon by your browser.
+- **Health endpoint** at `/salud`: plain-text state of the connection to Amazon
+  (outcome of the last request, last block, 24-hour counters), built from real
+  traffic without sending any extra request. It only answers direct requests;
+  anything coming through a reverse proxy (`X-Forwarded-For`) gets a 404.
 - **Works without JavaScript.** The gallery is a scrollable strip, the review
   sorter is plain links and the variant picker is plain links. Two small scripts
   (both AGPL-marked for LibreJS) improve the experience if scripting is on:
@@ -65,6 +69,7 @@ Everything below is new here; none of it existed upstream.
 - Customer reviews with avatars, photos, verified-purchase badges and sorting.
 - Variant picker for colour, size and format, resolved from the twister JSON.
 - Image proxy, in-memory caching and anti-bot detection.
+- Internal `/salud` endpoint to monitor Amazon blocks from real traffic.
 - Configuration by environment variables, own favicon, Spanish UI strings.
 
 ## What this fork fixes

@@ -317,6 +317,114 @@ var marcadoresBloqueo = [][]byte{
 	[]byte("api-services-support@amazon.com"),
 }
 
+// Resultado de cada petición a Amazon que hace el tráfico real: búsquedas,
+// fichas y reintentos de opiniones. Lo lee /salud para que un monitor sepa si
+// Amazon está sirviendo páginas de bloqueo sin pedirle nada: vigilar con
+// peticiones propias haría más probable el mismo bloqueo que se quiere detectar.
+const (
+	contactoOK = iota
+	contactoBloqueo
+	contactoError
+)
+
+var nombreContacto = [...]string{"ok", "bloqueo", "error"}
+
+type contacto struct {
+	cuando    time.Time
+	resultado int
+}
+
+// Ventana de los contadores de /salud.
+const ventanaSalud = 24 * time.Hour
+
+var (
+	saludMu        sync.Mutex
+	contactos      []contacto // los de la ventana, en orden de llegada
+	ultimoContacto contacto
+	ultimoBloqueo  time.Time
+)
+
+// Anota el resultado de una petición y descarta las que han salido de la
+// ventana. Son decenas o cientos al día, así que basta con una lista.
+func registrarContacto(resultado int) {
+	ahora := time.Now()
+	saludMu.Lock()
+	defer saludMu.Unlock()
+	ultimoContacto = contacto{cuando: ahora, resultado: resultado}
+	if resultado == contactoBloqueo {
+		ultimoBloqueo = ahora
+	}
+	limite := ahora.Add(-ventanaSalud)
+	i := 0
+	for i < len(contactos) && contactos[i].cuando.Before(limite) {
+		i++
+	}
+	contactos = append(contactos[i:], ultimoContacto)
+}
+
+// Petición a Amazon que además deja constancia de cómo ha ido. Las tres que
+// hace el tráfico real pasan por aquí, así que /salud no puede quedarse sin
+// ver ninguna.
+func pedirAmazon(ctx context.Context, destino string, cabeceras [][2]string) (*respuestaSaliente, error) {
+	res, err := obtener(ctx, destino, cabeceras, maxCuerpo)
+	switch {
+	case err != nil:
+		registrarContacto(contactoError)
+	case res.Estado != 200:
+		registrarContacto(contactoError)
+	case esBloqueo(res.Cuerpo):
+		registrarContacto(contactoBloqueo)
+	default:
+		registrarContacto(contactoOK)
+	}
+	return res, err
+}
+
+// Estado de la conexión con Amazon según el tráfico real, en texto plano para
+// un monitor por palabra clave. No hace ninguna petición a Amazon. Solo
+// responde a peticiones directas: las que llegan por un proxy inverso traen
+// X-Forwarded-For y reciben un 404, porque no tiene por qué ser público.
+func handleSalud(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	limite := time.Now().Add(-ventanaSalud)
+	saludMu.Lock()
+	ultimo, bloqueo := ultimoContacto, ultimoBloqueo
+	var peticiones, bloqueos, errores int
+	for _, c := range contactos {
+		if c.cuando.Before(limite) {
+			continue
+		}
+		peticiones++
+		switch c.resultado {
+		case contactoBloqueo:
+			bloqueos++
+		case contactoError:
+			errores++
+		}
+	}
+	saludMu.Unlock()
+
+	estado := "sin datos"
+	if !ultimo.cuando.IsZero() {
+		estado = nombreContacto[ultimo.resultado]
+	}
+	fecha := func(t time.Time) string {
+		if t.IsZero() {
+			return "-"
+		}
+		return t.Format(time.RFC3339)
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Fprintf(w, "amazon: %s\nultimo_contacto: %s\nultimo_bloqueo: %s\npeticiones_24h: %d\nbloqueos_24h: %d\nerrores_24h: %d\n",
+		estado, fecha(ultimo.cuando), fecha(bloqueo), peticiones, bloqueos, errores)
+}
+
 func esBloqueo(cuerpo []byte) bool {
 	for _, m := range marcadoresBloqueo {
 		if bytes.Contains(cuerpo, m) {
@@ -1504,7 +1612,7 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 		cabeceras = append(cabeceras, [2]string{"Accept-Language", idioma})
 	}
 
-	res, err := obtener(ctx, requestURL.String(), cabeceras, maxCuerpo)
+	res, err := pedirAmazon(ctx, requestURL.String(), cabeceras)
 	if err != nil {
 		fmt.Println("fallo al contactar con Amazon:", err)
 		resultsElement.Error = "No se pudo contactar con Amazon"
@@ -1762,7 +1870,7 @@ func producto(ctx context.Context, tld string, asin string, personalizacion stri
 		cabeceras = append(cabeceras, [2]string{"Accept-Language", idioma})
 	}
 
-	res, err := obtener(ctx, ficha.URLAmazon, cabeceras, maxCuerpo)
+	res, err := pedirAmazon(ctx, ficha.URLAmazon, cabeceras)
 	if err != nil {
 		fmt.Println("fallo al contactar con Amazon:", err)
 		ficha.Error = "No se pudo contactar con Amazon"
@@ -1846,7 +1954,7 @@ const reintentosOpiniones = 4
 // estudiar el bloqueo.
 func reintentarOpiniones(ctx context.Context, destino string, cabeceras [][2]string, tld, asin string) []Opinion {
 	for intento := 1; intento <= reintentosOpiniones; intento++ {
-		res, err := obtener(ctx, destino, cabeceras, maxCuerpo)
+		res, err := pedirAmazon(ctx, destino, cabeceras)
 		if err != nil {
 			fmt.Printf("reintento de opiniones: tld=%s asin=%s intento=%d error=%v\n", tld, asin, intento, err)
 			return nil
@@ -2261,6 +2369,7 @@ func main() {
 	mux.HandleFunc("/s", handleSearch)
 	mux.HandleFunc("/dp/", handleProducto)
 	mux.HandleFunc("/mediaproxy/", proxyMedia)
+	mux.HandleFunc("/salud", handleSalud)
 
 	mux.Handle("/static/", http.FileServer(http.FS(staticFiles)))
 
