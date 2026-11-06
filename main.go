@@ -1377,6 +1377,31 @@ func textoCelda(s *goquery.Selection) string {
 	return limpio.Text()
 }
 
+// Separador provisional para los saltos de línea de una opinión: un carácter
+// de uso privado, que no aparece en texto real.
+const marcaSalto = "\uE000"
+
+// Texto de una opinión con sus saltos de línea. Amazon separa los párrafos de
+// las opiniones con <p> (y alguna vez con <br>), y textoLimpio lo juntaba en un
+// bloque de corrido. Los saltos se marcan antes de normalizar los espacios,
+// porque los del propio HTML no son saltos del texto. Entre párrafos queda
+// como mucho una línea en blanco, que es lo que deja un <p> vacío.
+func textoConSaltos(s *goquery.Selection) string {
+	limpio := s.Clone()
+	limpio.Find("noscript, script, style").Remove()
+	limpio.Find("br").ReplaceWithHtml(marcaSalto)
+	limpio.Find("p").AppendHtml(marcaSalto)
+	var lineas []string
+	for _, l := range strings.Split(limpio.Text(), marcaSalto) {
+		l = strings.Join(strings.Fields(l), " ")
+		if l == "" && (len(lineas) == 0 || lineas[len(lineas)-1] == "") {
+			continue
+		}
+		lineas = append(lineas, l)
+	}
+	return strings.TrimSpace(strings.Join(lineas, "\n"))
+}
+
 // Texto de un nodo con los espacios normalizados. El contenido de noscript se
 // descarta antes: el parseador de Go lo trata como texto crudo en vez de como
 // etiquetas, de modo que el avatar que Amazon mete ahí salía como un "<img
@@ -1429,7 +1454,7 @@ func opiniones(doc *goquery.Document) []Opinion {
 			Autor:      textoLimpio(campoOpinion(s, "genome-widget")),
 			Titulo:     textoLimpio(campoOpinion(s, "reviewTitle")),
 			Fecha:      textoLimpio(campoOpinion(s, "review-date")),
-			Cuerpo:     textoLimpio(campoOpinion(s, "reviewRichContentContainer")),
+			Cuerpo:     textoConSaltos(campoOpinion(s, "reviewRichContentContainer")),
 			Utilidad:   textoLimpio(campoOpinion(s, "helpful-vote-statement")),
 			Verificada: campoOpinion(s, "avp-badge").Length() > 0,
 		}
