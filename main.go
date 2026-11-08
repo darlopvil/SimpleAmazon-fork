@@ -1720,7 +1720,11 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 	// find the search results
 	var searchResults []SearchResult
 
-	doc.Find(".s-result-item").Each(func(i int, result *goquery.Selection) {
+	// Solo los resultados orgánicos llevan data-component-type="s-search-result".
+	// Los anuncios son también .s-result-item, pero sin esa marca: salían sin
+	// precio, a menudo sin relación con la búsqueda y, según el redirector, con
+	// un enlace al contador de clics de Amazon.
+	doc.Find(".s-result-item[data-component-type='s-search-result']").Each(func(i int, result *goquery.Selection) {
 		// El titulo va en un h2 dentro del contenedor marcado con
 		// data-cy="title-recipe". Se usa el atributo en lugar de la clase
 		// s-title-instructions-style porque las clases utilitarias de Amazon
@@ -1836,9 +1840,17 @@ func search(ctx context.Context, tld string, searchTerm string, page int, sort s
 		// tenga que saber si el enlace venía relativo o absoluto.
 		link = urlAbsoluta(tld, link)
 
-		// Si el enlace apunta a una ficha de producto, se reescribe hacia la
-		// del propio frontend para no enviar al usuario a Amazon.
-		if asin := asinDeURL(link); asin != "" {
+		// El enlace se construye siempre con el ASIN de la tarjeta, nunca con el
+		// href que trae Amazon: los redirectores de anuncios cambian de formato
+		// (el último, sponsored-ads.amazon.es/clk) y uno desconocido mandaba al
+		// usuario a Amazon. Si la tarjeta no trae un ASIN válido se usa el del
+		// enlace, y si tampoco lo hay, el resultado se descarta.
+		asin, _ := result.Attr("data-asin")
+		if !asinValido(asin) {
+			asin = asinDeURL(link)
+		}
+		link = ""
+		if asinValido(asin) {
 			link = "/dp/" + asin + "?tld=" + tld
 		}
 
