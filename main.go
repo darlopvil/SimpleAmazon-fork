@@ -421,8 +421,8 @@ func handleSalud(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	fmt.Fprintf(w, "amazon: %s\nultimo_contacto: %s\nultimo_bloqueo: %s\npeticiones_24h: %d\nbloqueos_24h: %d\nerrores_24h: %d\n",
-		estado, fecha(ultimo.cuando), fecha(bloqueo), peticiones, bloqueos, errores)
+	fmt.Fprintf(w, "amazon: %s\nsalida: %s\nultimo_contacto: %s\nultimo_bloqueo: %s\npeticiones_24h: %d\nbloqueos_24h: %d\nerrores_24h: %d\n",
+		estado, salida(), fecha(ultimo.cuando), fecha(bloqueo), peticiones, bloqueos, errores)
 }
 
 func esBloqueo(cuerpo []byte) bool {
@@ -546,6 +546,19 @@ func entorno(nombre string, porDefecto string) string {
 		return v
 	}
 	return porDefecto
+}
+
+// Proxy por el que salen las peticiones a Amazon, o nil si salen directas.
+// Con el mismo cliente y en el mismo minuto, la IP propia de la instancia
+// recibía la página de bloqueo y otras salidas no (#27), así que se puede
+// mandar el tráfico por otra.
+var proxySalida *url.URL
+
+func salida() string {
+	if proxySalida != nil {
+		return "proxy"
+	}
+	return "directa"
 }
 
 // Cliente compartido para todas las peticiones salientes. El cliente por
@@ -2299,6 +2312,7 @@ func main() {
 	huella := flag.Bool("huella", false, "Consulta la huella TLS y HTTP/2 del cliente, la muestra y termina")
 	perfil := flag.String("tls", "go", "Huella de las peticiones salientes: go, navegador o curl")
 	volcado := flag.Bool("volcado", false, "Imprime por consola las peticiones salientes y sus respuestas")
+	proxy := flag.String("proxy", entorno("SIMPLEAMAZON_PROXY", ""), "Proxy HTTP de salida para las peticiones a Amazon (vacío: directo)")
 	flag.Parse()
 
 	// El cliente estandar sigue siendo el predeterminado. El perfil de
@@ -2335,6 +2349,26 @@ func main() {
 	if *volcado && sesionNavegador != nil {
 		sesionNavegador.Log()
 		fmt.Println("volcado de peticiones activado")
+	}
+
+	// Proxy de salida. Vale para los dos clientes, el estándar y el que imita
+	// la huella, y para el proxy de imágenes, que usa el estándar. Si el proxy
+	// no responde, la petición falla: no se vuelve a salir directo, porque eso
+	// usaría sin avisar la IP que se quiere evitar. La dirección no se imprime,
+	// por si lleva credenciales.
+	if *proxy != "" {
+		u, err := url.Parse(*proxy)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			log.Fatal("SIMPLEAMAZON_PROXY no es una URL válida (ejemplo: http://proxy:8888)")
+		}
+		proxySalida = u
+		clienteHTTP.Transport.(*http.Transport).Proxy = http.ProxyURL(u)
+		if sesionNavegador != nil {
+			if err := sesionNavegador.SetProxy(*proxy); err != nil {
+				log.Fatalf("no se pudo aplicar el proxy a la sesión del navegador: %v", err)
+			}
+		}
+		fmt.Println("salida: proxy")
 	}
 
 	if *huella {

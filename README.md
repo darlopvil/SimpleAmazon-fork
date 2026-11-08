@@ -18,7 +18,7 @@ moment you clicked one. This fork implements the product page.
 - **Image proxy** at `/mediaproxy/{host}/{path}`. Nothing on the page is loaded
   from Amazon by your browser.
 - **Health endpoint** at `/salud`: plain-text state of the connection to Amazon
-  (outcome of the last request, last block, 24-hour counters), built from real
+  (outcome of the last request, egress, last block, 24-hour counters), built from real
   traffic without sending any extra request. It only answers direct requests;
   anything coming through a reverse proxy (`X-Forwarded-For`) gets a 404.
 - **Works without JavaScript.** The gallery is a scrollable strip, the review
@@ -56,6 +56,7 @@ go build -o simpleamazon .
 | `-tls` | | `go` | Outgoing TLS fingerprint: `go`, `navegador` or `curl` |
 | `-huella` | | off | Print the client's TLS/HTTP2 fingerprint and exit |
 | `-volcado` | | off | Log outgoing requests and their responses |
+| `-proxy` | `SIMPLEAMAZON_PROXY` | none | HTTP proxy for every outgoing request to Amazon, pages and images. No fallback: if it is unreachable, requests fail with `502` |
 
 ## What this fork adds
 
@@ -86,7 +87,9 @@ Everything below is new here; none of it existed upstream.
   and affects every client equally, including a real browser under the same
   request rate. Fifteen hypotheses were ruled out empirically; see the open
   issue. When it happens the app answers `503` with a clear message rather than
-  a broken page.
+  a broken page. Blocks depend on the egress IP: paired tests showed the
+  instance's own IP blocked while other exits were not, so `SIMPLEAMAZON_PROXY`
+  can route the traffic through another one.
 - **Only the thirteen reviews Amazon embeds in the page** are shown. The
   `/product-reviews` endpoint redirects to a login page without cookies.
 - **No sorting reviews by date.** Amazon publishes the date only as localised
